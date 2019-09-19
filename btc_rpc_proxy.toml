@@ -1,0 +1,32 @@
+bitcoind_user = "bitcoinrpc"
+bitcoind_password = "taxation is theft"
+bind_address = "127.0.0.1"
+
+[user.public]
+password = "public"
+allowed_calls = [
+	"getblock",
+	"getblockchaininfo",
+	"getbestblockhash",
+	"getblockcount",
+	"getblockhash",
+	"getblockheader",
+	"getchaintips",
+	"getdifficulty",
+	"getnetworkinfo",
+	"getmempoolinfo",
+	"getrawmempool",
+	"gettxout",
+	"gettxoutproof",
+	"gettxoutsetinfo",
+	"verifytxoutproof",
+	"createrawtransaction",
+	"decoderawtransaction",
+	"decodescript",
+	"getrawtransaction",
+	"sendrawtransaction",
+	"estimatefee",
+	"estimatepriority",
+	"estimatesmartfee",
+	"estimatesmartpriority"
+]

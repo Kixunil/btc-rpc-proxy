@@ -1,0 +1,47 @@
+[general]
+doc = """
+Bitcoin RPC proxy enables you to define finer-grained permissions for your bitcoind. You can for example only allow certain calls to be made by specific users (by sharing specific password). The calls are defined using whitelist and an example of configuration file is provided with the source code."""
+
+[[param]]
+name = "bitcoind_user"
+type = "String"
+default = "Default::default()"
+doc = "The user name used when connecting to the real bitcoind."
+
+[[param]]
+name = "bitcoind_password"
+type = "String"
+optional = false
+argument = false
+doc = "The password used when connecting to the real bitcoind."
+
+[[param]]
+name = "bind_address"
+type = "::std::net::IpAddr"
+default = "[127, 0, 0, 1].into()"
+doc = "The address used for listening."
+
+[[param]]
+name = "bind_port"
+type = "u16"
+default = "8331"
+doc = "The port used for listening."
+
+[[param]]
+name = "bitcoind_address"
+type = "::std::net::IpAddr"
+default = "[127, 0, 0, 1].into()"
+doc = "The address of the real bitcoind."
+
+[[param]]
+name = "bitcoind_port"
+type = "u16"
+default = "8332"
+doc = "The port of the real bitcoind."
+
+[[param]]
+name = "user"
+type = "::std::collections::HashMap<String, ::User>"
+optional = false
+argument = false
+doc = "Map of user names to user configs. Each user must specify `password` field and an array of allowed calls named `allowed_calls`"
