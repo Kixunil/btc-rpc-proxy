@@ -3,6 +3,7 @@ name = "btc_rpc_proxy"
 version = "0.1.0"
 authors = ["Martin Habovštiak <martin.habovstiak@gmail.com>"]
 build = "build.rs"
+description = "Finer-grained permission management for bitcoind."
 
 [dependencies]
 hyper = "0.11.2"
@@ -19,3 +20,11 @@ configure_me = "0.3.2"
 
 [build_dependencies]
 configure_me_codegen = "0.3.4"
+
+[package.metadata.deb]
+extended-description = """
+This is a proxy made specifically for `bitcoind` to allow finer-grained control of permissions. It enables you to specify several users and for each user the list of RPC calls he's allowed to make.
+
+This is useful because `bitcoind` allows every application with password to make possibly harmful calls like stopping the daemon or spending from wallet (if enabled). If you have several applications, you can provide the less trusted ones a different password and permissions than the others using this project.
+
+There's another interesting advantage: since this is written in Rust, it might serve as a filter for **some** malformed requests which might be exploits. But I don't recommend relying on it!"""
