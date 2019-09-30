@@ -1,6 +1,11 @@
 [general]
+conf_file_param = "conf"
+conf_dir_param = "conf_dir"
 doc = """
 Bitcoin RPC proxy enables you to define finer-grained permissions for your bitcoind. You can for example only allow certain calls to be made by specific users (by sharing specific password). The calls are defined using whitelist and an example of configuration file is provided with the source code."""
+
+[debconf]
+package_name = "bitcoin-rpc-proxy-mainnet"
 
 [[param]]
 name = "bitcoind_user"
@@ -20,12 +25,16 @@ name = "bind_address"
 type = "::std::net::IpAddr"
 default = "[127, 0, 0, 1].into()"
 doc = "The address used for listening."
+debconf_priority = "low"
+debconf_default = "127.0.0.1"
 
 [[param]]
 name = "bind_port"
 type = "u16"
 default = "8331"
 doc = "The port used for listening."
+debconf_priority = "low"
+debconf_default = "8331"
 
 [[param]]
 name = "bitcoind_address"

@@ -16,10 +16,10 @@ toml = "0.4"
 slog = "2.2.3"
 slog-term = "2.4"
 slog-async = "2.3"
-configure_me = "0.3.2"
+configure_me = "0.3.3"
 
 [build_dependencies]
-configure_me_codegen = "0.3.4"
+configure_me_codegen = { version = "0.3.9", features = ["debconf"]}
 
 [package.metadata.deb]
 extended-description = """
@@ -28,3 +28,7 @@ This is a proxy made specifically for `bitcoind` to allow finer-grained control 
 This is useful because `bitcoind` allows every application with password to make possibly harmful calls like stopping the daemon or spending from wallet (if enabled). If you have several applications, you can provide the less trusted ones a different password and permissions than the others using this project.
 
 There's another interesting advantage: since this is written in Rust, it might serve as a filter for **some** malformed requests which might be exploits. But I don't recommend relying on it!"""
+assets = [
+	["target/release/btc_rpc_proxy", "usr/bin/btc_rpc_proxy", "755"],
+	["target/man/btc_rpc_proxy.1", "usr/bin/btc_rpc_proxy", "644"],
+]
