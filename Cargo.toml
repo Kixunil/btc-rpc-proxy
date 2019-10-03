@@ -19,7 +19,7 @@ slog-async = "2.3"
 configure_me = "0.3.3"
 
 [build_dependencies]
-configure_me_codegen = { version = "0.3.9", features = ["debconf"]}
+configure_me_codegen = { version = "0.3.11", features = ["debconf"]}
 
 [package.metadata.deb]
 extended-description = """
