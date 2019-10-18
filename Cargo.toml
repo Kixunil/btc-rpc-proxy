@@ -5,6 +5,9 @@ authors = ["Martin Habovštiak <martin.habovstiak@gmail.com>"]
 build = "build.rs"
 description = "Finer-grained permission management for bitcoind."
 
+[package.metadata.configure_me]
+spec = "config_spec.toml"
+
 [dependencies]
 hyper = "0.11.2"
 futures = "0.1"
@@ -19,7 +22,7 @@ slog-async = "2.3"
 configure_me = "0.3.3"
 
 [build_dependencies]
-configure_me_codegen = { version = "0.3.11", features = ["debconf"]}
+configure_me_codegen = { version = "0.3.12", features = ["debconf"]}
 
 [package.metadata.deb]
 extended-description = """
