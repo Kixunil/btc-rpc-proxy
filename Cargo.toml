@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Martin Habovštiak <martin.habovstiak@gmail.com>"]
 build = "build.rs"
 description = "Finer-grained permission management for bitcoind."
+edition = "2018"
 
 [package.metadata.configure_me]
 spec = "config_spec.toml"
