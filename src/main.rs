@@ -212,7 +212,7 @@ fn main() {
     use futures::Stream;
     use slog::Drain;
 
-    let (config, _) = config::Config::including_optional_config_files(&["btc_rpc_proxy.toml", "/etc/bitcoin/rpc_proxy.toml"]).unwrap_or_exit();
+    let (config, _) = config::Config::including_optional_config_files(std::iter::empty::<&str>()).unwrap_or_exit();
     let dest_uri = format!("http://{}:{}", config.bitcoind_address, config.bitcoind_port).parse().unwrap();
 
     let decorator = slog_term::TermDecorator::new().build();
