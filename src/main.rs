@@ -93,21 +93,14 @@ impl<U: Borrow<Users>> ClientContext<U> {
 type HttpClient = hyper::Client<hyper::client::HttpConnector>;
 
 enum AuthSource {
-    Const(Authorization<BasicAuth>),
+    Const { username: Option<String>, password: String },
     CookieFile(PathBuf),
-}
-
-impl From<BasicAuth> for AuthSource {
-    fn from(value: BasicAuth) -> Self {
-        AuthSource::Const(Authorization(value))
-    }
 }
 
 impl AuthSource {
     fn from_config(user: Option<String>, password: Option<String>, file: Option<PathBuf>) -> Result<Self, &'static str> {
         match (user, password, file) {
-            (Some(username), Some(password), None) => Ok(BasicAuth { username, password: Some(password) }.into()),
-            (None, Some(password), None) => Ok(BasicAuth { username: Default::default(), password: Some(password) }.into()),
+            (username, Some(password), None) => Ok(AuthSource::Const { username, password }),
             (None, None, Some(cookie_file)) => Ok(AuthSource::CookieFile(cookie_file)),
             // It could pull it from bitcoin.conf, but I don't think it's worth my time.
             // PRs open.
@@ -116,15 +109,22 @@ impl AuthSource {
         }
     }
 
-    fn load_from_file(path: &PathBuf) -> Result<Authorization<BasicAuth>, std::io::Error> {
-        std::fs::read_to_string(path).map(|cookie| Authorization(BasicAuth { username: cookie, password: None, }))
+    fn load_from_file(path: &PathBuf) -> Result<String, std::io::Error> {
+        std::fs::read_to_string(path).map(|mut cookie| { if cookie.ends_with('\n') { cookie.pop(); } cookie })
     }
 
-    fn try_load(&self) -> Result<Authorization<BasicAuth>, std::io::Error> {
+    fn try_load(&self) -> Result<Authorization<String>, std::io::Error> {
         match self {
-            AuthSource::Const(auth) => Ok(auth.clone()),
+            AuthSource::Const { username: Some(username), password } => Ok(format!("{}:{}", username, password)),
+            AuthSource::Const { username: None, password } => Ok(password.clone()),
             AuthSource::CookieFile(path) => AuthSource::load_from_file(path),
         }
+        .map(|auth| {
+            let mut header = "Basic ".to_owned();
+            base64::encode_config_buf(&auth, base64::STANDARD, &mut header);
+            header
+        })
+        .map(Authorization)
     }
 }
 
