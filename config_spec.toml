@@ -10,15 +10,19 @@ Bitcoin RPC proxy enables you to define finer-grained permissions for your bitco
 [[param]]
 name = "bitcoind_user"
 type = "String"
-default = "Default::default()"
 doc = "The user name used when connecting to the real bitcoind."
 
 [[param]]
 name = "bitcoind_password"
 type = "String"
-optional = false
 argument = false
 doc = "The password used when connecting to the real bitcoind."
+
+[[param]]
+name = "cookie_file"
+type = "std::path::PathBuf"
+argument = false
+doc = "The file in which bitcoind stores authentication cookie. Can be used instead of user:password."
 
 [[param]]
 name = "bind_address"

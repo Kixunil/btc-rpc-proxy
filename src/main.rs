@@ -3,6 +3,8 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate hyper;
 extern crate futures;
+#[macro_use]
+extern crate enum_future;
 extern crate tokio_core;
 #[macro_use]
 extern crate slog;
@@ -15,6 +17,7 @@ mod error;
 
 include_config!();
 
+use std::path::PathBuf;
 use std::collections::{HashSet, HashMap};
 use futures::Future;
 use hyper::{server::Service, Request, Response};
@@ -24,6 +27,8 @@ use std::rc::Rc;
 use slog::Logger;
 use self::error::{BadRequest, InvalidType};
 use std::borrow::Borrow;
+use hyper::header::Authorization;
+use hyper::header::Basic as BasicAuth;
 
 type JsonObject = serde_json::Map<String, JsonValue>;
 type JsonArray = Vec<JsonValue>;
@@ -38,7 +43,7 @@ pub type Users = HashMap<String, User>;
 
 struct ClientContext<U> {
     users: U,
-    auth: hyper::header::Authorization<hyper::header::Basic>,
+    auth: Authorization<BasicAuth>,
     logger: Logger,
 }
 
@@ -87,8 +92,45 @@ impl<U: Borrow<Users>> ClientContext<U> {
 
 type HttpClient = hyper::Client<hyper::client::HttpConnector>;
 
+enum AuthSource {
+    Const(Authorization<BasicAuth>),
+    CookieFile(PathBuf),
+}
+
+impl From<BasicAuth> for AuthSource {
+    fn from(value: BasicAuth) -> Self {
+        AuthSource::Const(Authorization(value))
+    }
+}
+
+impl AuthSource {
+    fn from_config(user: Option<String>, password: Option<String>, file: Option<PathBuf>) -> Result<Self, &'static str> {
+        match (user, password, file) {
+            (Some(username), Some(password), None) => Ok(BasicAuth { username, password: Some(password) }.into()),
+            (None, Some(password), None) => Ok(BasicAuth { username: Default::default(), password: Some(password) }.into()),
+            (None, None, Some(cookie_file)) => Ok(AuthSource::CookieFile(cookie_file)),
+            // It could pull it from bitcoin.conf, but I don't think it's worth my time.
+            // PRs open.
+            (None, None, None) => Err("missing authentication information"),
+            _ => Err("either a password and possibly a username or a cookie file must be specified"),
+        }
+    }
+
+    fn load_from_file(path: &PathBuf) -> Result<Authorization<BasicAuth>, std::io::Error> {
+        std::fs::read_to_string(path).map(|cookie| Authorization(BasicAuth { username: cookie, password: None, }))
+    }
+
+    fn try_load(&self) -> Result<Authorization<BasicAuth>, std::io::Error> {
+        match self {
+            AuthSource::Const(auth) => Ok(auth.clone()),
+            AuthSource::CookieFile(path) => AuthSource::load_from_file(path),
+        }
+    }
+}
+
 struct Proxy {
-    config: config::Config,
+    users: HashMap<String, User>,
+    auth: AuthSource,
     client: HttpClient,
     dest_uri: hyper::Uri,
 }
@@ -138,6 +180,14 @@ impl Service for ProxyHandle {
                 .with_body(UNAUTHORIZED))
         }
 
+        fn send_internal_error() -> impl Future<Item=Response, Error=hyper::Error> {
+            const INTERNAL_ERROR: &str = "{ \"error\" : \"internal server error\" }";
+            futures::future::ok(Response::new()
+                .with_status(StatusCode::InternalServerError)
+                .with_header(ContentLength(INTERNAL_ERROR.len() as u64))
+                .with_body(INTERNAL_ERROR))
+        }
+
         fn forward_call(client: &HttpClient, http_method: Method, uri: hyper::Uri, http_version: hyper::HttpVersion, headers: Headers, body: hyper::Chunk) -> impl Future<Item=Response, Error=hyper::Error> {
             let mut request = Request::new(http_method, uri);
             request.set_version(http_version);
@@ -154,9 +204,6 @@ impl Service for ProxyHandle {
             })
         }
 
-        use hyper::header::Authorization;
-        use hyper::header::Basic as BasicAuth;
-
         let (http_method, uri, http_version, mut headers, body) = req.deconstruct();
 
         if http_method == Method::Post && uri.path() == "/" {
@@ -165,8 +212,10 @@ impl Service for ProxyHandle {
 
                 let this = self.new(o!("user" => auth.username.clone()));
                 Box::new(body.concat2().and_then(move |body| {
+                    enum_future!(Ret, Forward, Unauthorized, BadRequest, InternalError);
+
                     let ctx = ClientContext {
-                        users: &this.config.user,
+                        users: &this.users,
                         auth,
                         logger: this.logger.clone(),
                     };
@@ -185,15 +234,29 @@ impl Service for ProxyHandle {
 
                     match result {
                         Ok(true) => {
-                            headers.set(Authorization(BasicAuth { username: this.config.bitcoind_user.clone(), password: Some(this.config.bitcoind_password.clone()) }));
-                            futures::future::Either::A(forward_call(&this.client, http_method, this.dest_uri.clone(), http_version, headers, body))
+                            let logger = &this.logger;
+                            this
+                                .auth
+                                .try_load()
+                                .map(|auth| {
+                                    headers.set(auth);
+                                    Ret::Forward(forward_call(&this.client, http_method, this.dest_uri.clone(), http_version, headers, body))
+                                })
+                                .map_err(|err| {
+                                    if err.kind() != std::io::ErrorKind::NotFound {
+                                        error!(logger, "Failed to read cookie file: {}", err);
+                                    }
+
+                                    send_internal_error()
+                                })
+                                .unwrap_or_else(Ret::InternalError)
                         },
                         Ok(false) => {
-                            futures::future::Either::B(futures::future::Either::A(send_unauthorized()))
+                            Ret::Unauthorized(send_unauthorized())
                         },
                         Err(error) => {
                             error!(this.logger, "Bad request"; "error" => %error);
-                            futures::future::Either::B(futures::future::Either::B(send_bad_request()))
+                            Ret::BadRequest(send_bad_request())
                         },
                     }
                 }))
@@ -213,6 +276,12 @@ fn main() {
     use slog::Drain;
 
     let (config, _) = config::Config::including_optional_config_files(std::iter::empty::<&str>()).unwrap_or_exit();
+    let auth = AuthSource::from_config(config.bitcoind_user, config.bitcoind_password, config.cookie_file)
+        .unwrap_or_else(|msg| {
+            eprintln!("Configuration error: {}", msg);
+            std::process::exit(1);
+        });
+
     let dest_uri = format!("http://{}:{}", config.bitcoind_address, config.bitcoind_port).parse().unwrap();
 
     let decorator = slog_term::TermDecorator::new().build();
@@ -227,7 +296,8 @@ fn main() {
     info!(logger, "Binding"; "bind address" => addr);
     let listener = tokio_core::net::TcpListener::bind(&addr, &handle).unwrap();
     let proxy = Proxy {
-        config,
+        auth,
+        users: config.user,
         client: HttpClient::new(&handle),
         dest_uri,
     };
