@@ -56,6 +56,6 @@ doc = "The port of the real bitcoind."
 name = "user"
 type = "::std::collections::HashMap<String, crate::User>"
 merge_fn = "std::iter::Extend::extend"
-optional = false
+default = "Default::default()"
 argument = false
 doc = "Map of user names to user configs. Each user must specify `password` field and an array of allowed calls named `allowed_calls`"
