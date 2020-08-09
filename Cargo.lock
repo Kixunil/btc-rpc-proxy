@@ -81,7 +81,7 @@ dependencies = [
 
 [[package]]
 name = "btc_rpc_proxy"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "configure_me 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",

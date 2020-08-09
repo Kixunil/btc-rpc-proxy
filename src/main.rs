@@ -180,6 +180,14 @@ impl Service for ProxyHandle {
                 .with_body(UNAUTHORIZED))
         }
 
+        fn send_forbidden() -> impl Future<Item=Response, Error=hyper::Error> {
+            const FORBIDDEN: &str = "{ \"error\" : \"forbidden\" }";
+            futures::future::ok(Response::new()
+                .with_status(StatusCode::Forbidden)
+                .with_header(ContentLength(FORBIDDEN.len() as u64))
+                .with_body(FORBIDDEN))
+        }
+
         fn send_internal_error() -> impl Future<Item=Response, Error=hyper::Error> {
             const INTERNAL_ERROR: &str = "{ \"error\" : \"internal server error\" }";
             futures::future::ok(Response::new()
@@ -212,7 +220,7 @@ impl Service for ProxyHandle {
 
                 let this = self.new(o!("user" => auth.username.clone()));
                 Box::new(body.concat2().and_then(move |body| {
-                    enum_future!(Ret, Forward, Unauthorized, BadRequest, InternalError);
+                    enum_future!(Ret, Forward, Forbidden, BadRequest, InternalError);
 
                     let ctx = ClientContext {
                         users: &this.users,
@@ -252,7 +260,7 @@ impl Service for ProxyHandle {
                                 .unwrap_or_else(Ret::InternalError)
                         },
                         Ok(false) => {
-                            Ret::Unauthorized(send_unauthorized())
+                            Ret::Forbidden(send_forbidden())
                         },
                         Err(error) => {
                             error!(this.logger, "Bad request"; "error" => %error);
