@@ -1,39 +1,49 @@
 [package]
-name = "btc_rpc_proxy"
-version = "0.1.1"
-authors = ["Martin Habovštiak <martin.habovstiak@gmail.com>"]
-build = "build.rs"
+authors = [
+  "Martin Habovštiak <martin.habovstiak@gmail.com>",
+  "Aiden McClelland <aiden@start9labs.com>",
+]
 description = "Finer-grained permission management for bitcoind."
 edition = "2018"
+name = "btc-rpc-proxy"
+version = "0.2.0"
 
-[package.metadata.configure_me]
-spec = "config_spec.toml"
+[features]
+default = ["cfg_me"]
+cfg_me = ["configure_me"]
+start9 = ["serde_yaml"]
 
 [dependencies]
-hyper = "0.11.2"
-base64 = "0.9.3"
-futures = "0.1"
+anyhow = "1.0.33"
+base32 = "0.4.0"
+base64 = "0.13.0"
+bitcoin = { version = "0.25.0", features = ["use-serde"] }
+configure_me = { version = "0.3.4", optional = true }
+derive_more = "0.99.11"
 enum_future = "0.1"
-tokio-core = "0.1"
-serde = "1"
-serde_derive = "1"
-serde_json = "1"
-slog = "2.2.3"
-slog-term = "2.4"
-slog-async = "2.3"
-configure_me = "0.3.3"
-
-[build_dependencies]
-configure_me_codegen = { version = "0.3.12", features = ["debconf"]}
+futures = "0.3.6"
+hex = "0.4.2"
+http = "0.2.1"
+hyper = "0.13.8"
+lazy_static = "1.4.0"
+rand = "0.7.3"
+serde = { version = "1.0.116", features = ["derive"] }
+serde_json = "1.0.59"
+serde_yaml = { version = "0.8.13", optional = true }
+slog = "2.5.2"
+slog-async = "2.5.0"
+slog-term = "2.6.0"
+socks = "0.3.2"
+tokio = { version = "0.2.22", features = ["full"] }
 
 [package.metadata.deb]
+assets = [
+  ["target/release/btc_rpc_proxy", "usr/bin/btc_rpc_proxy", "755"],
+  ["target/man/btc_rpc_proxy.1", "usr/bin/btc_rpc_proxy", "644"],
+]
 extended-description = """
 This is a proxy made specifically for `bitcoind` to allow finer-grained control of permissions. It enables you to specify several users and for each user the list of RPC calls he's allowed to make.
 
 This is useful because `bitcoind` allows every application with password to make possibly harmful calls like stopping the daemon or spending from wallet (if enabled). If you have several applications, you can provide the less trusted ones a different password and permissions than the others using this project.
 
 There's another interesting advantage: since this is written in Rust, it might serve as a filter for **some** malformed requests which might be exploits. But I don't recommend relying on it!"""
-assets = [
-	["target/release/btc_rpc_proxy", "usr/bin/btc_rpc_proxy", "755"],
-	["target/man/btc_rpc_proxy.1", "usr/bin/btc_rpc_proxy", "644"],
-]
