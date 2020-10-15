@@ -45,11 +45,54 @@ enum BitcoinCoreConfig {
     },
 }
 
+#[derive(serde::Serialize)]
+pub struct Properties {
+    version: u8,
+    data: (Property<Vec<Property<String>>>,),
+}
+
+#[derive(serde::Serialize)]
+pub struct Property<T> {
+    name: String,
+    value: T,
+    description: Option<String>,
+    copyable: bool,
+    qr: bool,
+}
+
 pub async fn create_env() -> Result<Env, Error> {
     let cfg: Config = tokio::task::spawn_blocking(move || -> Result<_, Error> {
-        Ok(serde_yaml::from_reader(std::fs::File::open(
-            "/root/start9/config.yaml",
-        )?)?)
+        let cfg: Config =
+            serde_yaml::from_reader(std::fs::File::open("/root/start9/config.yaml")?)?;
+        let tor_addr = std::env::var("TOR_ADDRESS")?;
+        serde_yaml::to_writer(
+            std::fs::File::create("/root/start9/stats.yaml")?,
+            &Properties {
+                version: 1,
+                data: (Property {
+                    name: "Quick Connect URLs".to_owned(),
+                    value: cfg
+                        .users
+                        .0
+                        .iter()
+                        .map(|(name, info)| Property {
+                            name: name.clone(),
+                            value: format!(
+                                "btcstandup://{}:{}@{}:8332/",
+                                name, info.password, tor_addr
+                            ),
+                            description: Some(format!("Quick Connect URL for {}", name)),
+                            copyable: true,
+                            qr: true,
+                        })
+                        .collect(),
+                    description: Some("Quick Connect URLs for each user".to_owned()),
+                    copyable: false,
+                    qr: false,
+                },),
+            },
+        )?;
+        Ok(cfg)
     })
     .await??;
     let decorator = slog_term::TermDecorator::new().build();
