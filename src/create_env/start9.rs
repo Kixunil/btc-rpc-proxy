@@ -1,4 +1,4 @@
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::time::Duration;
 
 use anyhow::Error;
@@ -11,7 +11,6 @@ use tokio::sync::Mutex;
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 struct Config {
-    pub bind: SocketAddr,
     pub bitcoind: BitcoinCoreConfig,
     pub users: Users,
     pub advanced: AdvancedConfig,
@@ -58,7 +57,7 @@ pub async fn create_env() -> Result<Env, Error> {
     let drain = slog_async::Async::new(drain).build().fuse();
     let logger = slog::Logger::root(drain, slog::o!());
     Ok(Env {
-        bind: cfg.bind,
+        bind: ([0, 0, 0, 0], 8332).into(),
         rpc_client: match cfg.bitcoind {
             BitcoinCoreConfig::Internal {
                 address,
@@ -81,12 +80,12 @@ pub async fn create_env() -> Result<Env, Error> {
                     password,
                 },
                 Uri::from_parts({
-                    let addr = address.into_parts();
+                    let mut addr = address.into_parts();
                     addr.scheme = Some(uri::Scheme::HTTP);
                     addr.path_and_query = None;
-                    if let Some(auth) = addr.authority {
+                    if let Some(ref auth) = addr.authority {
                         if auth.port().is_none() {
-                            addr.authority = format!("{}:8332", auth);
+                            addr.authority = Some(format!("{}:8332", auth).parse()?);
                         }
                     }
                     addr
