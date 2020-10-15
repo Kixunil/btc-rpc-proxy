@@ -14,7 +14,7 @@ use hyper::{
     body::Bytes,
     client::{Client, HttpConnector},
     header::{HeaderValue, AUTHORIZATION, CONTENT_LENGTH},
-    Body, Request, Response, StatusCode, Uri,
+    Body, Method, Request, Response, StatusCode, Uri,
 };
 use serde::{
     de::{Deserialize, Deserializer},
@@ -400,6 +400,7 @@ impl RpcClient {
                 self.client
                     .request(
                         Request::builder()
+                            .method(Method::POST)
                             .header(AUTHORIZATION, &self.authorization)
                             .uri(&self.uri)
                             .body(serde_json::to_string(req)?.into())?,
@@ -428,6 +429,7 @@ impl RpcClient {
                     .client
                     .request(
                         Request::builder()
+                            .method(Method::POST)
                             .header(AUTHORIZATION, &self.authorization)
                             .uri(&self.uri)
                             .body(serde_json::to_string(&new_batch)?.into())?,
@@ -458,6 +460,7 @@ impl RpcClient {
             .client
             .request(
                 Request::builder()
+                    .method(Method::POST)
                     .header(AUTHORIZATION, &self.authorization)
                     .uri(&self.uri)
                     .body(serde_json::to_string(req)?.into())?,

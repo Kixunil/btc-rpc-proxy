@@ -151,6 +151,8 @@ impl BitcoinPeerConnection {
                 stream.flush()?;
                 let _ =
                     bitcoin::network::message::RawNetworkMessage::consensus_decode(&mut stream)?; // version
+                let _ =
+                    bitcoin::network::message::RawNetworkMessage::consensus_decode(&mut stream)?; // verack
                 VER_ACK.consensus_encode(&mut stream)?;
                 stream.flush()?;
 
@@ -291,32 +293,49 @@ async fn fetch_block_from_peer<'a>(
             .map_err(From::from)
         })
         .await?;
-        let msg = peer
-            .with_connection_blocking(env, |conn| {
-                RawNetworkMessage::consensus_decode(conn).map_err(From::from)
-            })
-            .await?;
-        peer.mark_clean();
 
-        match msg.payload {
-            NetworkMessage::Block(b) => {
-                let returned_hash = b.block_hash();
-                let merkle_check = b.check_merkle_root();
-                let witness_check = b.check_witness_commitment();
-                match (returned_hash == hash, merkle_check, witness_check) {
-                    (true, true, true) => Ok(b),
-                    (true, true, false) => {
-                        Err(anyhow::anyhow!("Witness check failed for {:?}", hash))
-                    }
-                    (true, false, _) => Err(anyhow::anyhow!("Merkle check failed for {:?}", hash)),
-                    (false, _, _) => Err(anyhow::anyhow!(
-                        "Expected block hash {:?}, got {:?}",
-                        hash,
-                        returned_hash
-                    )),
+        loop {
+            let msg = peer
+                .with_connection_blocking(env, |conn| {
+                    RawNetworkMessage::consensus_decode(conn).map_err(From::from)
+                })
+                .await?;
+            match msg.payload {
+                NetworkMessage::Block(b) => {
+                    let returned_hash = b.block_hash();
+                    let merkle_check = b.check_merkle_root();
+                    let witness_check = b.check_witness_commitment();
+                    return match (returned_hash == hash, merkle_check, witness_check) {
+                        (true, true, true) => {
+                            peer.mark_clean();
+                            Ok(b)
+                        }
+                        (true, true, false) => {
+                            Err(anyhow::anyhow!("Witness check failed for {:?}", hash))
+                        }
+                        (true, false, _) => {
+                            Err(anyhow::anyhow!("Merkle check failed for {:?}", hash))
+                        }
+                        (false, _, _) => Err(anyhow::anyhow!(
+                            "Expected block hash {:?}, got {:?}",
+                            hash,
+                            returned_hash
+                        )),
+                    };
                 }
+                NetworkMessage::Ping(p) => {
+                    peer.with_connection_blocking(env, move |conn| {
+                        RawNetworkMessage {
+                            magic: Bitcoin.magic(),
+                            payload: NetworkMessage::Pong(p),
+                        }
+                        .consensus_encode(conn)
+                        .map_err(From::from)
+                    })
+                    .await?;
+                }
+                m => warn!(env.logger, "Invalid Message Received: {:?}", m),
             }
-            m => Err(anyhow::anyhow!("Invalid Message Received: {:?}", m)),
         }
     })
     .await?
@@ -341,7 +360,10 @@ async fn fetch_block_from_peer_set(
             }
             futures::future::ready(())
         });
-    let (b, _) = futures::join!(recv.next(), runner.boxed());
+    let b = futures::select! {
+        b = recv.next().fuse() => b,
+        _ = runner.boxed().fuse() => None,
+    };
     b
 }
 

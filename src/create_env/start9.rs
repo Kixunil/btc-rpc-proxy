@@ -48,7 +48,7 @@ enum BitcoinCoreConfig {
 pub async fn create_env() -> Result<Env, Error> {
     let cfg: Config = tokio::task::spawn_blocking(move || -> Result<_, Error> {
         Ok(serde_yaml::from_reader(std::fs::File::open(
-            "./start9/config.yaml",
+            "/root/start9/config.yaml",
         )?)?)
     })
     .await??;
