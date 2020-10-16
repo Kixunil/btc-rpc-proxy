@@ -13,6 +13,9 @@ use crate::client::{
 use crate::env::Env;
 use crate::fetch_blocks::fetch_block;
 
+#[cfg(feature = "compat")]
+use crate::util::compat::StrCompat;
+
 #[derive(Debug, serde::Deserialize)]
 pub struct Users(pub HashMap<String, User>);
 impl Users {

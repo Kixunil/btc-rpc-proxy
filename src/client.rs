@@ -25,6 +25,9 @@ use serde_json::Value;
 
 use crate::util::HexBytes;
 
+#[cfg(feature = "compat")]
+use crate::util::compat::StrCompat;
+
 pub const MISC_ERROR_CODE: i64 = -1;
 pub const METHOD_NOT_ALLOWED_ERROR_CODE: i64 = -32604;
 pub const PARSE_ERROR_CODE: i64 = -32700;

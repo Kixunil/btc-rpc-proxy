@@ -29,3 +29,27 @@ pub fn deserialize_parse<'de, D: Deserializer<'de>, T: std::str::FromStr>(
     s.parse()
         .map_err(|_| serde::de::Error::invalid_value(Unexpected::Str(&s), &"a valid URI"))
 }
+
+#[cfg(feature = "compat")]
+pub mod compat {
+    pub trait StrCompat {
+        fn strip_prefix<'a>(&'a self, prefix: &str) -> Option<&'a str>;
+        fn strip_suffix<'a>(&'a self, prefix: &str) -> Option<&'a str>;
+    }
+    impl StrCompat for str {
+        fn strip_prefix<'a>(&'a self, prefix: &str) -> Option<&'a str> {
+            if let Some(s) = self.matches(prefix).next() {
+                Some(&self[s.len()..])
+            } else {
+                None
+            }
+        }
+        fn strip_suffix<'a>(&'a self, prefix: &str) -> Option<&'a str> {
+            if let Some(s) = self.rmatches(prefix).next() {
+                Some(&self[..(self.len() - s.len())])
+            } else {
+                None
+            }
+        }
+    }
+}
