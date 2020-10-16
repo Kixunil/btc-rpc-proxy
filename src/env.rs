@@ -10,11 +10,16 @@ use crate::fetch_blocks::{PeerHandle, PeerList};
 use crate::users::Users;
 
 #[derive(Debug)]
+pub struct TorEnv {
+    pub proxy: SocketAddr,
+    pub only: bool,
+}
+
+#[derive(Debug)]
 pub struct Env {
     pub bind: SocketAddr,
     pub rpc_client: RpcClient,
-    pub tor_proxy: SocketAddr,
-    pub tor_only: bool,
+    pub tor: Option<TorEnv>,
     pub users: Users,
     pub logger: Logger,
     pub peer_timeout: Duration,

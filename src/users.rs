@@ -40,62 +40,52 @@ impl User {
         &'static self,
         env: &'static Env,
         req: &'a RpcRequest<GenericRpcMethod>,
-    ) -> Option<RpcResponse<GenericRpcMethod>> {
-        async fn intercept_res<'a>(
-            user: &'static User,
-            env: &'static Env,
-            req: &'a RpcRequest<GenericRpcMethod>,
-        ) -> Result<Option<RpcResponse<GenericRpcMethod>>, RpcError> {
-            if user.allowed_calls.contains(&*req.method) {
-                if user.fetch_blocks
-                    && &*req.method == GetBlock.as_str()
-                    && req.params.get(1) == Some(&Value::Number(0.into()))
-                // only non-verbose for now
+    ) -> Result<Option<RpcResponse<GenericRpcMethod>>, RpcError> {
+        if self.allowed_calls.contains(&*req.method) {
+            if self.fetch_blocks
+                && &*req.method == GetBlock.as_str()
+                && req.params.get(1) == Some(&Value::Number(0.into()))
+            // only non-verbose for now
+            {
+                match fetch_block(
+                    env,
+                    env.get_peers().await?,
+                    serde_json::from_value(req.params[0].clone()).map_err(Error::from)?,
+                )
+                .await
                 {
-                    match fetch_block(
-                        env,
-                        env.get_peers().await?,
-                        serde_json::from_value(req.params[0].clone()).map_err(Error::from)?,
-                    )
-                    .await
-                    {
-                        Ok(Some(block)) => {
-                            let mut block_data = Vec::new();
-                            block
-                                .consensus_encode(&mut block_data)
-                                .map_err(Error::from)?;
-                            let block_data = hex::encode(&block_data);
-                            Ok(Some(RpcResponse {
-                                id: req.id.clone(),
-                                result: Some(Value::String(block_data)),
-                                error: None,
-                            }))
-                        }
-                        Ok(None) => Err(RpcError {
+                    Ok(Some(block)) => {
+                        let mut block_data = Vec::new();
+                        block
+                            .consensus_encode(&mut block_data)
+                            .map_err(Error::from)?;
+                        let block_data = hex::encode(&block_data);
+                        Ok(Some(RpcResponse {
+                            id: req.id.clone(),
+                            result: Some(Value::String(block_data)),
+                            error: None,
+                        }))
+                    }
+                    Ok(None) => Ok(Some(RpcResponse {
+                        id: req.id.clone(),
+                        result: None,
+                        error: Some(RpcError {
                             code: MISC_ERROR_CODE,
                             message: PRUNE_ERROR_MESSAGE.to_owned(),
                             status: None,
                         }),
-                        Err(e) => Ok(Some(e.into())),
-                    }
-                } else {
-                    Ok(None)
+                    })),
+                    Err(e) => Ok(Some(e.into())),
                 }
             } else {
-                Err(RpcError {
-                    code: METHOD_NOT_ALLOWED_ERROR_CODE,
-                    message: METHOD_NOT_ALLOWED_ERROR_MESSAGE.to_owned(),
-                    status: Some(StatusCode::FORBIDDEN),
-                })
+                Ok(None)
             }
-        }
-        match intercept_res(self, env, req).await {
-            Ok(a) => a,
-            Err(e) => Some(RpcResponse {
-                id: req.id.clone(),
-                result: None,
-                error: Some(e),
-            }),
+        } else {
+            Err(RpcError {
+                code: METHOD_NOT_ALLOWED_ERROR_CODE,
+                message: METHOD_NOT_ALLOWED_ERROR_MESSAGE.to_owned(),
+                status: Some(StatusCode::FORBIDDEN),
+            })
         }
     }
 }

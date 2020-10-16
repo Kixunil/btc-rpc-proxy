@@ -20,7 +20,7 @@ use hyper::{
 };
 
 pub use crate::client::{AuthSource, RpcClient};
-pub use crate::env::Env;
+pub use crate::env::{Env, TorEnv};
 pub use crate::fetch_blocks::PeerList;
 use crate::proxy::proxy_request;
 pub use crate::users::{User, Users};

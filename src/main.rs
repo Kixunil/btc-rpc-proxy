@@ -1,3 +1,8 @@
+#[macro_use]
+extern crate configure_me;
+#[macro_use]
+extern crate serde;
+
 use anyhow::Error;
 use btc_rpc_proxy;
 

@@ -24,7 +24,7 @@ use crate::client::{
     GetBlock, GetBlockParams, GetPeerInfo, RpcError, RpcRequest, MISC_ERROR_CODE,
     PRUNE_ERROR_MESSAGE,
 };
-use crate::env::Env;
+use crate::env::{Env, TorEnv};
 
 type VersionMessageProducer = Box<dyn Fn(Address) -> RawNetworkMessage + Send + Sync>;
 
@@ -122,12 +122,15 @@ impl BitcoinPeerConnection {
         tokio::time::timeout(
             env.peer_timeout,
             tokio::task::spawn_blocking(move || {
-                let mut stream = match addr.socket_addr() {
-                    Ok(addr) if !env.tor_only => {
+                let mut stream = match (addr.socket_addr(), &env.tor) {
+                    (Ok(addr), Some(TorEnv { only: false, .. })) | (Ok(addr), None) => {
                         BitcoinPeerConnection::ClearNet(TcpStream::connect(addr)?)
                     }
-                    _ => BitcoinPeerConnection::Tor(Socks5Stream::connect(
-                        env.tor_proxy,
+                    (Ok(addr), Some(tor)) => {
+                        BitcoinPeerConnection::Tor(Socks5Stream::connect(tor.proxy, addr)?)
+                    }
+                    (Err(_), Some(tor)) => BitcoinPeerConnection::Tor(Socks5Stream::connect(
+                        tor.proxy,
                         (
                             format!(
                                 "{}.onion",
@@ -146,6 +149,7 @@ impl BitcoinPeerConnection {
                             addr.port,
                         ),
                     )?),
+                    (Err(e), None) => return Err(e.into()),
                 };
                 VERSION_MESSAGE(addr).consensus_encode(&mut stream)?;
                 stream.flush()?;

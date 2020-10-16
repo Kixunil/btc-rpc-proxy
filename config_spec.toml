@@ -54,8 +54,32 @@ doc = "The port of the real bitcoind."
 
 [[param]]
 name = "user"
-type = "::std::collections::HashMap<String, crate::User>"
+type = "std::collections::HashMap<String, btc_rpc_proxy::User>"
 merge_fn = "std::iter::Extend::extend"
 default = "Default::default()"
 argument = false
 doc = "Map of user names to user configs. Each user must specify `password` field and an array of allowed calls named `allowed_calls`"
+
+[[param]]
+name = "peer_timeout"
+type = "u64"
+default = "30"
+doc = "How many seconds to wait for a response from a peer before failing"
+
+[[param]]
+name = "max_peer_age"
+type = "u64"
+default = "300"
+doc = "How many seconds to wait before refreshing the peer list"
+
+[[param]]
+name = "tor_proxy"
+type = "std::net::SocketAddr"
+optional = true
+doc = "The IP address and port of the Tor SOCKSv5 proxy to use for peer connections"
+
+[[param]]
+name = "tor_only"
+type = "bool"
+default = "false"
+doc = "Use tor for non-.onion peer connections"

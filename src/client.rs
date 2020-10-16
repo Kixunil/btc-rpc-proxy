@@ -9,13 +9,14 @@ use bitcoin::{
     network::{constants::ServiceFlags, Address},
     util::amount::Amount,
 };
-use futures::{channel::mpsc, StreamExt};
+use futures::{channel::mpsc, StreamExt, TryStreamExt};
 use hyper::{
     body::Bytes,
     client::{Client, HttpConnector},
     header::{HeaderValue, AUTHORIZATION, CONTENT_LENGTH},
     Body, Method, Request, Response, StatusCode, Uri,
 };
+use itertools::Itertools;
 use serde::{
     de::{Deserialize, Deserializer},
     ser::{Serialize, Serializer},
@@ -387,65 +388,90 @@ impl RpcClient {
     pub async fn send<
         'a,
         F: Fn(&'a RpcRequest<GenericRpcMethod>) -> Fut,
-        Fut: Future<Output = Option<RpcResponse<GenericRpcMethod>>> + 'a,
+        Fut: Future<Output = Result<Option<RpcResponse<GenericRpcMethod>>, RpcError>> + 'a,
     >(
         &self,
         req: &'a SingleOrBatchRpcRequest,
         intercept: F,
     ) -> Result<Response<Body>, Error> {
         match req {
-            SingleOrBatchRpcRequest::Single(req) => Ok(if let Some(res) = intercept(req).await {
-                res.into_response()?
-            } else {
-                self.client
-                    .request(
-                        Request::builder()
-                            .method(Method::POST)
-                            .header(AUTHORIZATION, &self.authorization)
-                            .uri(&self.uri)
-                            .body(serde_json::to_string(req)?.into())?,
-                    )
-                    .await?
-            }),
+            SingleOrBatchRpcRequest::Single(req) => {
+                Ok(if let Some(res) = intercept(req).await.transpose() {
+                    res.unwrap_or_else(|e| RpcResponse {
+                        id: req.id.clone(),
+                        result: None,
+                        error: Some(e),
+                    })
+                    .into_response()?
+                } else {
+                    self.client
+                        .request(
+                            Request::builder()
+                                .method(Method::POST)
+                                .header(AUTHORIZATION, &self.authorization)
+                                .uri(&self.uri)
+                                .body(serde_json::to_string(req)?.into())?,
+                        )
+                        .await?
+                })
+            }
             SingleOrBatchRpcRequest::Batch(reqs) => {
                 let (intercepted_send, intercepted_recv) = mpsc::unbounded();
                 let (forwarded_send, forwarded_recv) = mpsc::unbounded();
                 let intercept_fn = &intercept;
-                futures::stream::iter(reqs)
-                    .for_each_concurrent(None, move |req| {
+                futures::stream::iter(reqs.iter().enumerate())
+                    .for_each_concurrent(None, move |(idx, req)| {
                         let intercepted_send = intercepted_send.clone();
                         let forwarded_send = forwarded_send.clone();
                         async move {
-                            if let Some(res) = intercept_fn(req).await {
-                                intercepted_send.unbounded_send(res).unwrap();
-                            } else {
-                                forwarded_send.unbounded_send(req).unwrap();
+                            match intercept_fn(req).await.transpose() {
+                                Some(res) => intercepted_send
+                                    .unbounded_send(res.map(|res| (idx, res)))
+                                    .unwrap(),
+                                None => forwarded_send.unbounded_send((idx, req)).unwrap(),
                             }
                         }
                     })
                     .await;
-                let new_batch: Vec<&RpcRequest<GenericRpcMethod>> = forwarded_recv.collect().await;
-                let response = self
-                    .client
-                    .request(
-                        Request::builder()
-                            .method(Method::POST)
-                            .header(AUTHORIZATION, &self.authorization)
-                            .uri(&self.uri)
-                            .body(serde_json::to_string(&new_batch)?.into())?,
-                    )
-                    .await?;
-                let body: Bytes =
-                    tokio::stream::StreamExt::collect::<Result<Bytes, _>>(response.into_body())
-                        .await?;
-                let forwarded_res: Vec<RpcResponse<GenericRpcMethod>> =
-                    serde_json::from_slice(body.as_ref())?;
-                let body = serde_json::to_vec(
-                    &futures::stream::iter(forwarded_res)
-                        .chain(intercepted_recv)
-                        .collect::<Vec<_>>()
-                        .await,
-                )?;
+                async fn send_batch(
+                    client: &RpcClient,
+                    forwarded_recv: mpsc::UnboundedReceiver<(usize, &RpcRequest<GenericRpcMethod>)>,
+                ) -> Result<Vec<(usize, RpcResponse<GenericRpcMethod>)>, RpcError> {
+                    let (idxs, new_batch): (Vec<usize>, Vec<_>) =
+                        forwarded_recv.collect::<Vec<_>>().await.into_iter().unzip();
+                    let response = client
+                        .client
+                        .request(
+                            Request::builder()
+                                .method(Method::POST)
+                                .header(AUTHORIZATION, &client.authorization)
+                                .uri(&client.uri)
+                                .body(serde_json::to_string(&new_batch)?.into())
+                                .map_err(Error::from)?,
+                        )
+                        .await
+                        .map_err(Error::from)?;
+                    let body: Bytes =
+                        tokio::stream::StreamExt::collect::<Result<Bytes, _>>(response.into_body())
+                            .await
+                            .map_err(Error::from)?;
+                    let forwarded_res: Vec<RpcResponse<GenericRpcMethod>> =
+                        serde_json::from_slice(body.as_ref())?;
+                    Ok(idxs.into_iter().zip(forwarded_res).collect())
+                }
+                let (forwarded, intercepted) = match futures::try_join!(
+                    send_batch(self, forwarded_recv),
+                    intercepted_recv.try_collect::<Vec<_>>()
+                ) {
+                    Ok(a) => a,
+                    Err(e) => return Ok(RpcResponse::from(e).into_response()?),
+                };
+                let res_vec: Vec<RpcResponse<GenericRpcMethod>> = forwarded
+                    .into_iter()
+                    .merge_by(intercepted, |(a, _), (b, _)| a < b)
+                    .map(|(_, res)| res)
+                    .collect();
+                let body = serde_json::to_vec(&res_vec)?;
                 Ok(Response::builder()
                     .header(CONTENT_LENGTH, body.len())
                     .body(body.into())?)
