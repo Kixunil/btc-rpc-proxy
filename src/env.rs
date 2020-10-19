@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Error;
@@ -29,6 +30,9 @@ pub struct Env {
 impl Env {
     pub fn leak(self) -> &'static Self {
         Box::leak(Box::new(self))
+    }
+    pub fn arc(self) -> Arc<Self> {
+        Arc::new(self)
     }
     pub async fn get_peers(&self) -> Result<Vec<PeerHandle>, Error> {
         self.peers.lock().await.get_peers(self).await

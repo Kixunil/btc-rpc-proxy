@@ -44,7 +44,7 @@ pub mod compat {
                 None
             }
         }
-        fn strip_suffix<'a>(&'a self, prefix: &str) -> Option<&'a str> {
+        fn strip_suffix<'a>(&'a self, suffix: &str) -> Option<&'a str> {
             if let Some(s) = self.rmatches(prefix).next() {
                 Some(&self[..(self.len() - s.len())])
             } else {

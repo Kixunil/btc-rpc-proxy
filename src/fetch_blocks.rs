@@ -118,7 +118,7 @@ impl Write for BitcoinPeerConnection {
     }
 }
 impl BitcoinPeerConnection {
-    pub async fn connect(env: &'static Env, addr: Address) -> Result<Self, Error> {
+    pub async fn connect(env: Arc<Env>, addr: Address) -> Result<Self, Error> {
         tokio::time::timeout(
             env.peer_timeout,
             tokio::task::spawn_blocking(move || {
@@ -209,7 +209,7 @@ impl PeerHandle {
         Fut: std::future::Future<Output = Result<T, Error>>,
     >(
         &mut self,
-        env: &'static Env,
+        env: Arc<Env>,
         f: F,
     ) -> Result<T, Error> {
         let conn = if let Some(ref mut connection) = self.connection {
@@ -228,7 +228,7 @@ impl PeerHandle {
         F: FnOnce(&mut BitcoinPeerConnection) -> Result<T, Error> + Send + 'static,
     >(
         &mut self,
-        env: &'static Env,
+        env: Arc<Env>,
         f: F,
     ) -> Result<T, Error> {
         let mut conn = if let Some(connection) = self.connection.take() {
@@ -260,10 +260,7 @@ impl<'a> Drop for PeerHandle {
     }
 }
 
-async fn fetch_block_from_self(
-    env: &'static Env,
-    hash: BlockHash,
-) -> Result<Option<Block>, RpcError> {
+async fn fetch_block_from_self(env: &Env, hash: BlockHash) -> Result<Option<Block>, RpcError> {
     match env
         .rpc_client
         .call(&RpcRequest {
@@ -283,12 +280,12 @@ async fn fetch_block_from_self(
 }
 
 async fn fetch_block_from_peer<'a>(
-    env: &'static Env,
+    env: Arc<Env>,
     hash: BlockHash,
     mut peer: PeerHandle,
 ) -> Result<Block, Error> {
     tokio::time::timeout(env.peer_timeout, async move {
-        peer.with_connection_blocking(env, move |conn| {
+        peer.with_connection_blocking(env.clone(), move |conn| {
             RawNetworkMessage {
                 magic: Bitcoin.magic(),
                 payload: NetworkMessage::GetData(vec![Inventory::Block(hash)]),
@@ -300,7 +297,7 @@ async fn fetch_block_from_peer<'a>(
 
         loop {
             let msg = peer
-                .with_connection_blocking(env, |conn| {
+                .with_connection_blocking(env.clone(), |conn| {
                     RawNetworkMessage::consensus_decode(conn).map_err(From::from)
                 })
                 .await?;
@@ -328,7 +325,7 @@ async fn fetch_block_from_peer<'a>(
                     };
                 }
                 NetworkMessage::Ping(p) => {
-                    peer.with_connection_blocking(env, move |conn| {
+                    peer.with_connection_blocking(env.clone(), move |conn| {
                         RawNetworkMessage {
                             magic: Bitcoin.magic(),
                             payload: NetworkMessage::Pong(p),
@@ -346,7 +343,7 @@ async fn fetch_block_from_peer<'a>(
 }
 
 async fn fetch_block_from_peer_set(
-    env: &'static Env,
+    env: Arc<Env>,
     peers: Vec<PeerHandle>,
     hash: BlockHash,
 ) -> Option<Block> {
@@ -355,8 +352,9 @@ async fn fetch_block_from_peer_set(
     let (send, mut recv) = futures::channel::mpsc::channel(1);
     let fut_unordered: futures::stream::FuturesUnordered<_> =
         peers.into_iter().map(futures::future::ready).collect();
+    let env_local = env.clone();
     let runner = fut_unordered
-        .then(move |p| fetch_block_from_peer(env, hash.clone(), p))
+        .then(move |p| fetch_block_from_peer(env_local.clone(), hash.clone(), p))
         .for_each_concurrent(None, |block_res| {
             match block_res {
                 Ok(block) => send.clone().try_send(block).unwrap_or_default(),
@@ -372,18 +370,18 @@ async fn fetch_block_from_peer_set(
 }
 
 pub async fn fetch_block(
-    env: &'static Env,
+    env: Arc<Env>,
     peers: Vec<PeerHandle>,
     hash: BlockHash,
 ) -> Result<Option<Block>, RpcError> {
-    Ok(match fetch_block_from_self(env, hash).await? {
+    Ok(match fetch_block_from_self(&*env, hash).await? {
         Some(block) => Some(block),
         None => {
             info!(
                 env.logger,
                 "Block is pruned from Core, attempting fetch from peers."
             );
-            if let Some(block) = fetch_block_from_peer_set(env, peers, hash).await {
+            if let Some(block) = fetch_block_from_peer_set(env.clone(), peers, hash).await {
                 Some(block)
             } else {
                 warn!(env.logger, "Could not fetch block from peers.");

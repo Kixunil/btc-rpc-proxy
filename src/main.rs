@@ -10,6 +10,6 @@ mod create_env;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let env = create_env::create_env().await?.leak();
+    let env = create_env::create_env().await?.arc();
     btc_rpc_proxy::main(env).await
 }

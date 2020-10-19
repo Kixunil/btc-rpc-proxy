@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use anyhow::Error;
 use bitcoin::consensus::Encodable;
@@ -40,8 +41,8 @@ pub struct User {
 }
 impl User {
     pub async fn intercept<'a>(
-        &'static self,
-        env: &'static Env,
+        &self,
+        env: Arc<Env>,
         req: &'a RpcRequest<GenericRpcMethod>,
     ) -> Result<Option<RpcResponse<GenericRpcMethod>>, RpcError> {
         if self.allowed_calls.contains(&*req.method) {
@@ -51,7 +52,7 @@ impl User {
             // only non-verbose for now
             {
                 match fetch_block(
-                    env,
+                    env.clone(),
                     env.get_peers().await?,
                     serde_json::from_value(req.params[0].clone()).map_err(Error::from)?,
                 )
