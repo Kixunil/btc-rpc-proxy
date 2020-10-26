@@ -272,7 +272,12 @@ async fn fetch_block_from_self(env: &Env, hash: BlockHash) -> Result<Option<Bloc
         .into_result()
     {
         Ok(b) => Ok(Some(
-            Block::consensus_decode(&mut std::io::Cursor::new(b.as_ref())).map_err(Error::from)?,
+            Block::consensus_decode(&mut std::io::Cursor::new(
+                b.as_left()
+                    .ok_or_else(|| anyhow::anyhow!("unexpected response for getblock"))?
+                    .as_ref(),
+            ))
+            .map_err(Error::from)?,
         )),
         Err(e) if e.code == MISC_ERROR_CODE && e.message == PRUNE_ERROR_MESSAGE => Ok(None),
         Err(e) => Err(e),

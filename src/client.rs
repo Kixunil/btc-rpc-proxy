@@ -23,7 +23,7 @@ use serde::{
 };
 use serde_json::Value;
 
-use crate::util::HexBytes;
+use crate::util::{Either, HexBytes};
 
 #[cfg(feature = "compat")]
 use crate::util::compat::StrCompat;
@@ -129,7 +129,7 @@ pub struct GetBlockParams(
 );
 impl RpcMethod for GetBlock {
     type Params = GetBlockParams;
-    type Response = HexBytes;
+    type Response = Either<HexBytes, GetBlockResult>;
     fn as_str(&self) -> &'static str {
         "getblock"
     }
@@ -151,6 +151,72 @@ impl<'de> Deserialize<'de> for GetBlock {
             ))
         }
     }
+}
+
+#[derive(Debug)]
+pub struct GetBlockHeader;
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct GetBlockHeaderParams(
+    pub BlockHash,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub Option<bool>,
+);
+impl RpcMethod for GetBlockHeader {
+    type Params = GetBlockHeaderParams;
+    type Response = Either<HexBytes, GetBlockHeaderResult>;
+    fn as_str(&self) -> &'static str {
+        "getblockheader"
+    }
+}
+impl Serialize for GetBlockHeader {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.as_str().serialize(serializer)
+    }
+}
+impl<'de> Deserialize<'de> for GetBlockHeader {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s: &'de str = Deserialize::deserialize(deserializer)?;
+        if s == Self.as_str() {
+            Ok(Self)
+        } else {
+            Err(serde::de::Error::invalid_value(
+                serde::de::Unexpected::Str(s),
+                &Self.as_str(),
+            ))
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBlockHeaderResult {
+    pub hash: bitcoin::BlockHash,
+    pub confirmations: u32,
+    pub height: usize,
+    pub version: i32,
+    pub version_hex: Option<HexBytes>,
+    pub merkleroot: bitcoin::TxMerkleNode,
+    pub time: usize,
+    pub mediantime: Option<usize>,
+    pub nonce: u32,
+    pub bits: String,
+    pub difficulty: f64,
+    pub chainwork: HexBytes,
+    pub n_tx: usize,
+    pub previousblockhash: Option<bitcoin::BlockHash>,
+    pub nextblockhash: Option<bitcoin::BlockHash>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBlockResult {
+    #[serde(flatten)]
+    pub header: GetBlockHeaderResult,
+    pub size: usize,
+    pub strippedsize: Option<usize>,
+    pub weight: usize,
+    pub tx: Vec<bitcoin::Txid>,
 }
 
 #[derive(Debug)]

@@ -53,3 +53,39 @@ pub mod compat {
         }
     }
 }
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(untagged)]
+pub enum Either<Left, Right> {
+    Left(Left),
+    Right(Right),
+}
+impl<Left, Right> Either<Left, Right> {
+    pub fn as_left(&self) -> Option<&Left> {
+        match self {
+            Either::Left(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    pub fn as_right(&self) -> Option<&Right> {
+        match self {
+            Either::Right(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    pub fn into_left(self) -> Option<Left> {
+        match self {
+            Either::Left(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    pub fn into_right(self) -> Option<Right> {
+        match self {
+            Either::Right(a) => Some(a),
+            _ => None,
+        }
+    }
+}
