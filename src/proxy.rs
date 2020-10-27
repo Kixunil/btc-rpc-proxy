@@ -12,18 +12,57 @@ pub async fn proxy_request(env: Arc<Env>, request: Request<Body>) -> Result<Resp
     if parts.uri.path() == "/" || parts.uri.path() == "" {
         if parts.method == Method::POST {
             let env_local = env.clone();
-            if let Some(user) = parts
+            if let Some((name, user)) = parts
                 .headers
                 .get(AUTHORIZATION)
                 .and_then(|auth| env_local.users.get(auth))
             {
-                match serde_json::from_slice(body.collect::<Result<Bytes, _>>().await?.as_ref()) {
+                let body_data = body.collect::<Result<Bytes, _>>().await?;
+                match serde_json::from_slice(body_data.as_ref()) {
                     Ok(req) => {
                         let env_local = env.clone();
-                        Ok(env
+                        let name_local = Arc::new(name);
+                        let response = env
                             .rpc_client
-                            .send(&req, move |req| user.intercept(env_local.clone(), req))
-                            .await?)
+                            .send(&req, move |req| {
+                                use futures::TryFutureExt;
+                                let name_local_ok = name_local.clone();
+                                let name_local_err = name_local.clone();
+                                let env_local_ok = env_local.clone();
+                                let env_local_err = env_local.clone();
+                                user.intercept(env_local.clone(), req)
+                                    .map_ok(move |res| {
+                                        if res.is_some() {
+                                            info!(
+                                                env_local_ok.logger,
+                                                "{} called {}: INTERCEPTED",
+                                                name_local_ok,
+                                                req.method.0
+                                            )
+                                        } else {
+                                            info!(
+                                                env_local_ok.logger,
+                                                "{} called {}: SUCCESS",
+                                                name_local_ok,
+                                                req.method.0
+                                            )
+                                        }
+                                        res
+                                    })
+                                    .map_err(move |err| {
+                                        info!(
+                                            env_local_err.logger,
+                                            "{} called {}: ERROR {} {}",
+                                            name_local_err,
+                                            req.method.0,
+                                            err.code,
+                                            err.message
+                                        );
+                                        err
+                                    })
+                            })
+                            .await?;
+                        Ok(response)
                     }
                     Err(e) => Ok(RpcResponse::from(RpcError::from(e)).into_response()?),
                 }

@@ -20,7 +20,7 @@ use crate::util::compat::StrCompat;
 #[derive(Debug, serde::Deserialize)]
 pub struct Users(pub HashMap<String, User>);
 impl Users {
-    pub fn get(&self, auth: &HeaderValue) -> Option<&User> {
+    pub fn get(&self, auth: &HeaderValue) -> Option<(String, &User)> {
         let header_str = auth.to_str().ok()?;
         let auth = header_str.strip_prefix("Basic ")?;
         let auth_decoded = base64::decode(auth).ok()?;
@@ -28,7 +28,10 @@ impl Users {
         let mut auth_split = auth_decoded_str.split(":");
         let name = auth_split.next()?;
         let pass = auth_split.next()?;
-        self.0.get(name).filter(|u| u.password == pass)
+        self.0
+            .get(name)
+            .filter(|u| u.password == pass)
+            .map(|u| (name.to_owned(), u))
     }
 }
 

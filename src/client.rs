@@ -88,7 +88,9 @@ impl<'de> Deserialize<'de> for SingleOrBatchRpcRequest {
                         "params" => {
                             params = map.next_value()?;
                         }
-                        _ => (),
+                        _ => {
+                            let _: serde_json::Value = map.next_value()?;
+                        }
                     }
                 }
                 Ok(SingleOrBatchRpcRequest::Single(RpcRequest {
