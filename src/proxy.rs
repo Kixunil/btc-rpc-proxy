@@ -42,7 +42,7 @@ pub async fn proxy_request(env: Arc<Env>, request: Request<Body>) -> Result<Resp
                                         } else {
                                             info!(
                                                 env_local_ok.logger,
-                                                "{} called {}: SUCCESS",
+                                                "{} called {}: FORWARDED",
                                                 name_local_ok,
                                                 req.method.0
                                             )
