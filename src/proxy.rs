@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use anyhow::Error;
-use hyper::{body::Bytes, header::AUTHORIZATION, Body, Method, Request, Response, StatusCode};
+use hyper::{
+    body::Bytes,
+    header::{AUTHORIZATION, WWW_AUTHENTICATE},
+    Body, Method, Request, Response, StatusCode,
+};
 use tokio::stream::StreamExt;
 
 use crate::client::{RpcError, RpcResponse};
@@ -69,6 +73,7 @@ pub async fn proxy_request(env: Arc<Env>, request: Request<Body>) -> Result<Resp
             } else {
                 Ok(Response::builder()
                     .status(StatusCode::UNAUTHORIZED)
+                    .header(WWW_AUTHENTICATE, "Basic realm=\"jsonrpc\"")
                     .body(Body::empty())?)
             }
         } else {
