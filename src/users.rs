@@ -7,12 +7,14 @@ use hyper::{header::HeaderValue, StatusCode};
 use serde_json::Value;
 
 use crate::client::{
-    GenericRpcMethod, GetBlock, GetBlockHeader, GetBlockHeaderParams, GetBlockResult, RpcError,
-    RpcMethod, RpcRequest, RpcResponse, METHOD_NOT_ALLOWED_ERROR_CODE,
+    GenericRpcMethod, RpcError, RpcMethod, RpcRequest, RpcResponse, METHOD_NOT_ALLOWED_ERROR_CODE,
     METHOD_NOT_ALLOWED_ERROR_MESSAGE, MISC_ERROR_CODE, PRUNE_ERROR_MESSAGE,
 };
 use crate::env::Env;
 use crate::fetch_blocks::fetch_block;
+use crate::rpc_methods::{
+    GetBlock, GetBlockHeader, GetBlockHeaderParams, GetBlockResult, GetBlockchainInfo,
+};
 
 #[cfg(feature = "compat")]
 use crate::util::compat::StrCompat;
@@ -140,6 +142,18 @@ impl User {
                     }
                     _ => Ok(None), // TODO
                 }
+            } else if self.fetch_blocks && &*req.method == GetBlockchainInfo.as_str() {
+                let mut res = env
+                    .rpc_client
+                    .call(&RpcRequest {
+                        id: req.id.clone(),
+                        method: GetBlockchainInfo,
+                        params: [],
+                    })
+                    .await?;
+                res.result.as_mut().map(|r| r.pruned = false);
+
+                Ok(None)
             } else {
                 Ok(None)
             }

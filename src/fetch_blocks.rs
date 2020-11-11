@@ -20,11 +20,9 @@ use futures::channel::mpsc;
 use futures::FutureExt;
 use socks::Socks5Stream;
 
-use crate::client::{
-    GetBlock, GetBlockParams, GetPeerInfo, RpcError, RpcRequest, MISC_ERROR_CODE,
-    PRUNE_ERROR_MESSAGE,
-};
+use crate::client::{RpcError, RpcRequest, MISC_ERROR_CODE, PRUNE_ERROR_MESSAGE};
 use crate::env::{Env, TorEnv};
+use crate::rpc_methods::{GetBlock, GetBlockParams, GetPeerInfo};
 
 type VersionMessageProducer = Box<dyn Fn(Address) -> RawNetworkMessage + Send + Sync>;
 

@@ -7,6 +7,7 @@ pub mod client;
 pub mod env;
 pub mod fetch_blocks;
 pub mod proxy;
+pub mod rpc_methods;
 pub mod users;
 pub mod util;
 
