@@ -328,7 +328,7 @@ pub struct BlockchainInfo {
     /// Estimate of whether this node is in Initial Block Download mode
     pub initialblockdownload: bool,
     /// Total amount of work in active chain, in hexadecimal
-    pub chain_work: HexBytes,
+    pub chainwork: HexBytes,
     /// The estimated size of the block and undo files on disk
     pub size_on_disk: u64,
     /// If the blocks are subject to pruning
