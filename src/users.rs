@@ -143,17 +143,13 @@ impl User {
                     _ => Ok(None), // TODO
                 }
             } else if self.fetch_blocks && &*req.method == GetBlockchainInfo.as_str() {
-                let mut res = env
-                    .rpc_client
-                    .call(&RpcRequest {
-                        id: req.id.clone(),
-                        method: GetBlockchainInfo,
-                        params: [],
-                    })
-                    .await?;
-                res.result.as_mut().map(|r| r.pruned = false);
+                let mut res = env.rpc_client.call(req).await?;
+                res.result.as_mut().map(|r| match r {
+                    Value::Object(o) => o.get_mut("pruned").map(|p| *p = Value::Bool(false)),
+                    _ => None,
+                });
 
-                Ok(None)
+                Ok(Some(res))
             } else {
                 Ok(None)
             }
