@@ -1,19 +1,24 @@
-Bitcoin RPC proxy
-=================
+# Bitcoin Proxy
 
 Finer-grained permission management for bitcoind.
 
-About
------
+## About
 
-This is a proxy made specifically for `bitcoind` to allow finer-grained control of permissions. It enables you to specify several users and for each user the list of RPC calls he's allowed to make.
+Bitcoin Proxy sits in front of your Bitcoin node and acts as both a gatekeeper and a super charger. It gives you (1) fine grained permission management, such that you can specify node permissions for various users or apps, and (2) it grants unprecedented capabilities to your pruned node!
+
+### Fine-grained permission management
 
 This is useful because `bitcoind` allows every application with password to make possibly harmful calls like stopping the daemon or spending from wallet (if enabled). If you have several applications, you can provide the less trusted ones a different password and permissions than the others using this project.
 
 There's another interesting advantage: since this is written in Rust, it might serve as a filter for **some** malformed requests which might be exploits. But I don't recommend relying on it!
 
-Usage
------
+### On-demand block fetching
+
+By connecting to your pruned Bitcoin node through Bitcoin Proxy, your node will now behave as though it is not pruned! If a user or application requires a block that is not retained by your pruned node, Bitcoin Proxy will dynamically fetch the block over the P2P network, then verify its hash against your node to ensure validity.
+
+The usefulness of this new technology is massive. It means that you can run multiple services against your pruned Bitcoin node — such as Lightning and BTCPay — without them fighting for control over the pruning. Both are happy because both believe they are dealing with an unpruned node.
+
+## Usage
 
 For security and performance reasons this application is written in Rust. Thus, you need a recent Rust compiler to compile it.
 
@@ -23,19 +28,13 @@ An example configuration file is provided in this repository, hopefuly it's unde
 
 A man page is also generated during build and `--help` option is provided.
 
-Limitations
------------
-
-**BIG FAT WARNING: this project is very young and hasn't been reviewed yet! Use at your own risk! The author reserves the right to publicly ridicule anyone stupid enough to blindly run this!**
-
-Aside the project being young, there are some other issues:
+## Limitations
 
 * It uses `serde_json`, which allocates during deserialization (`Value`). Expect a bit lower performance than without proxy.
 * Logging can't be configured yet.
 * No support for changing UID.
 * No support for Unix sockets.
 * Redirect instead of blocking might be a useful feaure, which is now lacking.
-* The quality of the code shouldn't be too bad, but I wouldn't call it "high".
 
 License
 -------
