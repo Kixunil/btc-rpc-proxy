@@ -29,7 +29,7 @@ pub async fn proxy_request(env: Arc<Env>, request: Request<Body>) -> Result<Resp
                         let name_local = Arc::new(name);
                         let response = env
                             .rpc_client
-                            .send(&req, move |req| {
+                            .send(parts.uri.path(), &req, move |_path, req| {
                                 use futures::TryFutureExt;
                                 let name_local_ok = name_local.clone();
                                 let name_local_err = name_local.clone();

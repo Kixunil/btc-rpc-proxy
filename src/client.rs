@@ -206,16 +206,17 @@ impl RpcClient {
     }
     pub async fn send<
         'a,
-        F: Fn(&'a RpcRequest<GenericRpcMethod>) -> Fut,
+        F: Fn(&'a str, &'a RpcRequest<GenericRpcMethod>) -> Fut,
         Fut: Future<Output = Result<Option<RpcResponse<GenericRpcMethod>>, RpcError>> + 'a,
     >(
         &self,
+        path: &'a str,
         req: &'a SingleOrBatchRpcRequest,
         intercept: F,
     ) -> Result<Response<Body>, Error> {
         match req {
             SingleOrBatchRpcRequest::Single(req) => {
-                Ok(if let Some(res) = intercept(req).await.transpose() {
+                Ok(if let Some(res) = intercept(path, req).await.transpose() {
                     res.unwrap_or_else(|e| RpcResponse {
                         id: req.id.clone(),
                         result: None,
@@ -228,7 +229,7 @@ impl RpcClient {
                             Request::builder()
                                 .method(Method::POST)
                                 .header(AUTHORIZATION, &self.authorization)
-                                .uri(&self.uri)
+                                .uri(format!("{}{}", self.uri, path))
                                 .body(serde_json::to_string(req)?.into())?,
                         )
                         .await?
@@ -243,7 +244,7 @@ impl RpcClient {
                         let intercepted_send = intercepted_send.clone();
                         let forwarded_send = forwarded_send.clone();
                         async move {
-                            match intercept_fn(req).await.transpose() {
+                            match intercept_fn(path, req).await.transpose() {
                                 Some(res) => intercepted_send
                                     .unbounded_send(res.map(|res| (idx, res)))
                                     .unwrap(),
@@ -254,6 +255,7 @@ impl RpcClient {
                     .await;
                 async fn send_batch(
                     client: &RpcClient,
+                    path: &str,
                     forwarded_recv: mpsc::UnboundedReceiver<(usize, &RpcRequest<GenericRpcMethod>)>,
                 ) -> Result<Vec<(usize, RpcResponse<GenericRpcMethod>)>, RpcError> {
                     let (idxs, new_batch): (Vec<usize>, Vec<_>) =
@@ -264,7 +266,7 @@ impl RpcClient {
                             Request::builder()
                                 .method(Method::POST)
                                 .header(AUTHORIZATION, &client.authorization)
-                                .uri(&client.uri)
+                                .uri(format!("{}{}", client.uri, path))
                                 .body(serde_json::to_string(&new_batch)?.into())
                                 .map_err(Error::from)?,
                         )
@@ -279,7 +281,7 @@ impl RpcClient {
                     Ok(idxs.into_iter().zip(forwarded_res).collect())
                 }
                 let (forwarded, intercepted) = match futures::try_join!(
-                    send_batch(self, forwarded_recv),
+                    send_batch(self, path, forwarded_recv),
                     intercepted_recv.try_collect::<Vec<_>>()
                 ) {
                     Ok(a) => a,
