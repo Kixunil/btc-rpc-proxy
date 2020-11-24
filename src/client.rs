@@ -224,12 +224,14 @@ impl RpcClient {
                     })
                     .into_response()?
                 } else {
+                    let mut parts = self.uri.clone().into_parts();
+                    parts.path_and_query = Some(path.parse()?);
                     self.client
                         .request(
                             Request::builder()
                                 .method(Method::POST)
                                 .header(AUTHORIZATION, &self.authorization)
-                                .uri(format!("{}{}", self.uri, path))
+                                .uri(Uri::from_parts(parts)?)
                                 .body(serde_json::to_string(req)?.into())?,
                         )
                         .await?
@@ -260,13 +262,15 @@ impl RpcClient {
                 ) -> Result<Vec<(usize, RpcResponse<GenericRpcMethod>)>, RpcError> {
                     let (idxs, new_batch): (Vec<usize>, Vec<_>) =
                         forwarded_recv.collect::<Vec<_>>().await.into_iter().unzip();
+                    let mut parts = client.uri.clone().into_parts();
+                    parts.path_and_query = Some(path.parse().map_err(Error::from)?);
                     let response = client
                         .client
                         .request(
                             Request::builder()
                                 .method(Method::POST)
                                 .header(AUTHORIZATION, &client.authorization)
-                                .uri(format!("{}{}", client.uri, path))
+                                .uri(Uri::from_parts(parts).map_err(Error::from)?)
                                 .body(serde_json::to_string(&new_batch)?.into())
                                 .map_err(Error::from)?,
                         )
