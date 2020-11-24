@@ -13,7 +13,8 @@ use crate::env::Env;
 
 pub async fn proxy_request(env: Arc<Env>, request: Request<Body>) -> Result<Response<Body>, Error> {
     let (parts, body) = request.into_parts();
-    if parts.uri.path() == "/" || parts.uri.path() == "" {
+    if parts.uri.path() == "/" || parts.uri.path() == "" || parts.uri.path().starts_with("/wallet/")
+    {
         if parts.method == Method::POST {
             let env_local = env.clone();
             if let Some((name, user)) = parts

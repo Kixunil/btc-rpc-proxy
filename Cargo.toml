@@ -6,7 +6,7 @@ authors = [
 description = "Finer-grained permission management for bitcoind."
 edition = "2018"
 name = "btc-rpc-proxy"
-version = "0.2.1"
+version = "0.2.2"
 
 [lib]
 name = "btc_rpc_proxy"
