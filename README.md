@@ -1,10 +1,10 @@
-# Bitcoin Proxy
+# Bitcoin RPC Proxy
 
 Finer-grained permission management for bitcoind.
 
 ## About
 
-Bitcoin Proxy sits in front of your Bitcoin node and acts as both a gatekeeper and a super charger. It gives you (1) fine grained permission management, such that you can specify node permissions for various users or apps, and (2) it grants unprecedented capabilities to your pruned node!
+This is a proxy made specifically for `bitcoind` to allow finer-grained control of permissions. It enables you to specify several users and for each user the list of RPC calls they are allowed to make. When run against a prunded node, the proxy will perform on-demand block fetching and verification, enabling features of a non-pruned node while still using a pruned node.
 
 ### Fine-grained permission management
 
@@ -14,9 +14,11 @@ There's another interesting advantage: since this is written in Rust, it might s
 
 ### On-demand block fetching
 
-By connecting to your pruned Bitcoin node through Bitcoin Proxy, your node will now behave as though it is not pruned! If a user or application requires a block that is not retained by your pruned node, Bitcoin Proxy will dynamically fetch the block over the P2P network, then verify its hash against your node to ensure validity.
+By connecting to your pruned Bitcoin node through Bitcoin Proxy, your node will now behave as though it is not pruned. If a user or application requires a block that is not retained by your pruned node, Bitcoin Proxy will dynamically fetch the block over the P2P network, then verify its hash against your node to ensure validity.
 
-The usefulness of this new technology is massive. It means that you can run multiple services against your pruned Bitcoin node — such as Lightning and BTCPay — without them fighting for control over the pruning. Both are happy because both believe they are dealing with an unpruned node.
+This means that you can run multiple services against your _pruned_ Bitcoin node — such as Lightning and BTCPay — without them fighting for control over the pruning. Both are happy because both believe they are dealing with an _unpruned_ node.
+
+A tradeoff to the proxy is speed and bandwidth. Every time the proxy needs to fetch a block not retained by your pruned node, it must reach out over the P2P network, consuming both Internet bandwidth and time.
 
 ## Usage
 
