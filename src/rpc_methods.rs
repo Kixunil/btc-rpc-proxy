@@ -123,10 +123,8 @@ pub struct PeerInfo {
     /// The IP address and port of the peer
     pub addr: String,
     /// Bind address of the connection to the peer
-    // TODO: use a type for addrbind
     pub addrbind: String,
     /// Local address as reported by the peer
-    // TODO: use a type for addrlocal
     pub addrlocal: Option<String>,
     /// The services offered
     // TODO: use a type for services

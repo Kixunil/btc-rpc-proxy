@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::Instant;
 
 use anyhow::Error;
@@ -20,7 +21,7 @@ use futures::channel::mpsc;
 use futures::FutureExt;
 use socks::Socks5Stream;
 
-use crate::client::{RpcError, RpcRequest, MISC_ERROR_CODE, PRUNE_ERROR_MESSAGE};
+use crate::client::{RpcClient, RpcError, RpcRequest, MISC_ERROR_CODE, PRUNE_ERROR_MESSAGE};
 use crate::env::{Env, TorEnv};
 use crate::rpc_methods::{GetBlock, GetBlockParams, GetPeerInfo};
 
@@ -52,25 +53,28 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug)]
-pub struct PeerList {
+pub struct Peers {
     fetched: Option<Instant>,
     peers: Vec<Peer>,
 }
-impl PeerList {
+impl Peers {
     pub fn new() -> Self {
-        PeerList {
+        Peers {
             fetched: None,
             peers: Vec::new(),
         }
     }
-    pub async fn get_peers(&mut self, env: &Env) -> Result<Vec<PeerHandle>, Error> {
+    pub async fn get_peers(
+        &mut self,
+        client: &RpcClient,
+        max_peer_age: Duration,
+    ) -> Result<Vec<PeerHandle>, Error> {
         if self
             .fetched
-            .map(|f| f.elapsed() > env.max_peer_age)
+            .map(|f| f.elapsed() > max_peer_age)
             .unwrap_or(true)
         {
-            self.peers = env
-                .rpc_client
+            self.peers = client
                 .call(&RpcRequest {
                     id: None,
                     method: GetPeerInfo,
@@ -85,7 +89,7 @@ impl PeerList {
                 .collect::<Result<_, _>>()?;
             self.fetched = Some(Instant::now());
         }
-        Ok(self.peers.iter_mut().map(|p| p.peer_handle()).collect())
+        Ok(self.peers.iter_mut().map(|p| p.handle()).collect())
     }
 }
 
@@ -166,25 +170,20 @@ impl BitcoinPeerConnection {
 }
 
 pub struct Peer {
-    addr: Arc<Address>,
+    addr: Address,
     send: mpsc::Sender<BitcoinPeerConnection>,
     recv: mpsc::Receiver<BitcoinPeerConnection>,
 }
 impl Peer {
     pub fn new(addr: Address) -> Self {
         let (send, recv) = mpsc::channel(1);
-        Peer {
-            addr: Arc::new(addr),
-            send,
-            recv,
-        }
+        Peer { addr, send, recv }
     }
-    pub fn peer_handle<'a>(&'a mut self) -> PeerHandle {
+    pub fn handle(&mut self) -> PeerHandle {
         PeerHandle {
             addr: self.addr.clone(),
+            conn: self.recv.try_next().ok().and_then(|a| a),
             send: self.send.clone(),
-            connection: self.recv.try_next().ok().and_then(|a| a),
-            dirty: false,
         }
     }
 }
@@ -195,66 +194,44 @@ impl std::fmt::Debug for Peer {
 }
 
 pub struct PeerHandle {
-    addr: Arc<Address>,
+    addr: Address,
+    conn: Option<BitcoinPeerConnection>,
     send: mpsc::Sender<BitcoinPeerConnection>,
-    connection: Option<BitcoinPeerConnection>,
-    dirty: bool,
 }
 impl PeerHandle {
-    pub async fn with_connection<
-        T,
-        F: FnOnce(&mut BitcoinPeerConnection) -> Fut,
-        Fut: std::future::Future<Output = Result<T, Error>>,
-    >(
-        &mut self,
-        env: Arc<Env>,
-        f: F,
-    ) -> Result<T, Error> {
-        let conn = if let Some(ref mut connection) = self.connection {
-            connection
+    pub async fn connect(&mut self, env: Arc<Env>) -> Result<RecyclableConnection, Error> {
+        if let Some(conn) = self.conn.take() {
+            Ok(RecyclableConnection {
+                conn,
+                send: self.send.clone(),
+            })
         } else {
-            self.connection =
-                Some(BitcoinPeerConnection::connect(env, (&*self.addr).clone()).await?);
-            self.connection.as_mut().unwrap()
-        };
-        self.dirty = true;
-        f(conn).await
-    }
-
-    pub async fn with_connection_blocking<
-        T: Send + 'static,
-        F: FnOnce(&mut BitcoinPeerConnection) -> Result<T, Error> + Send + 'static,
-    >(
-        &mut self,
-        env: Arc<Env>,
-        f: F,
-    ) -> Result<T, Error> {
-        let mut conn = if let Some(connection) = self.connection.take() {
-            connection
-        } else {
-            BitcoinPeerConnection::connect(env, (&*self.addr).clone()).await?
-        };
-        self.dirty = true;
-        let (conn, res) = tokio::task::spawn_blocking(move || {
-            let res = f(&mut conn);
-            (conn, res)
-        })
-        .await?;
-        self.connection = Some(conn);
-        Ok(res?)
-    }
-
-    pub fn mark_clean(&mut self) {
-        self.dirty = false;
+            Ok(RecyclableConnection {
+                conn: BitcoinPeerConnection::connect(env, (&self.addr).clone()).await?,
+                send: self.send.clone(),
+            })
+        }
     }
 }
-impl<'a> Drop for PeerHandle {
-    fn drop(&mut self) {
-        if !self.dirty {
-            if let Some(connection) = self.connection.take() {
-                self.send.try_send(connection).unwrap_or_default()
-            }
-        }
+
+pub struct RecyclableConnection {
+    conn: BitcoinPeerConnection,
+    send: mpsc::Sender<BitcoinPeerConnection>,
+}
+impl RecyclableConnection {
+    fn recycle(mut self) {
+        self.send.try_send(self.conn).unwrap_or_default()
+    }
+}
+impl std::ops::Deref for RecyclableConnection {
+    type Target = BitcoinPeerConnection;
+    fn deref(&self) -> &Self::Target {
+        &self.conn
+    }
+}
+impl std::ops::DerefMut for RecyclableConnection {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.conn
     }
 }
 
@@ -285,35 +262,35 @@ async fn fetch_block_from_self(env: &Env, hash: BlockHash) -> Result<Option<Bloc
 async fn fetch_block_from_peer<'a>(
     env: Arc<Env>,
     hash: BlockHash,
-    mut peer: PeerHandle,
-) -> Result<Block, Error> {
+    mut conn: RecyclableConnection,
+) -> Result<(Block, RecyclableConnection), Error> {
     tokio::time::timeout(env.peer_timeout, async move {
-        peer.with_connection_blocking(env.clone(), move |conn| {
+        conn = tokio::task::spawn_blocking(move || {
             RawNetworkMessage {
                 magic: Bitcoin.magic(),
                 payload: NetworkMessage::GetData(vec![Inventory::Block(hash)]),
             }
-            .consensus_encode(conn)
-            .map_err(From::from)
+            .consensus_encode(&mut *conn)
+            .map_err(Error::from)
+            .map(|_| conn)
         })
-        .await?;
+        .await??;
 
         loop {
-            let msg = peer
-                .with_connection_blocking(env.clone(), |conn| {
-                    RawNetworkMessage::consensus_decode(conn).map_err(From::from)
-                })
-                .await?;
+            let (msg, conn_) = tokio::task::spawn_blocking(move || {
+                RawNetworkMessage::consensus_decode(&mut *conn)
+                    .map_err(Error::from)
+                    .map(|msg| (msg, conn))
+            })
+            .await??;
+            conn = conn_;
             match msg.payload {
                 NetworkMessage::Block(b) => {
                     let returned_hash = b.block_hash();
                     let merkle_check = b.check_merkle_root();
                     let witness_check = b.check_witness_commitment();
                     return match (returned_hash == hash, merkle_check, witness_check) {
-                        (true, true, true) => {
-                            peer.mark_clean();
-                            Ok(b)
-                        }
+                        (true, true, true) => Ok((b, conn)),
                         (true, true, false) => {
                             Err(anyhow::anyhow!("Witness check failed for {:?}", hash))
                         }
@@ -328,15 +305,16 @@ async fn fetch_block_from_peer<'a>(
                     };
                 }
                 NetworkMessage::Ping(p) => {
-                    peer.with_connection_blocking(env.clone(), move |conn| {
+                    conn = tokio::task::spawn_blocking(move || {
                         RawNetworkMessage {
                             magic: Bitcoin.magic(),
                             payload: NetworkMessage::Pong(p),
                         }
-                        .consensus_encode(conn)
-                        .map_err(From::from)
+                        .consensus_encode(&mut *conn)
+                        .map_err(Error::from)
+                        .map(|_| conn)
                     })
-                    .await?;
+                    .await??;
                 }
                 m => warn!(env.logger, "Invalid Message Received: {:?}", m),
             }
@@ -345,7 +323,7 @@ async fn fetch_block_from_peer<'a>(
     .await?
 }
 
-async fn fetch_block_from_peer_set(
+async fn fetch_block_from_peers(
     env: Arc<Env>,
     peers: Vec<PeerHandle>,
     hash: BlockHash,
@@ -357,10 +335,23 @@ async fn fetch_block_from_peer_set(
         peers.into_iter().map(futures::future::ready).collect();
     let env_local = env.clone();
     let runner = fut_unordered
-        .then(move |p| fetch_block_from_peer(env_local.clone(), hash.clone(), p))
+        .then(move |mut peer| {
+            let env_local = env_local.clone();
+            async move {
+                fetch_block_from_peer(
+                    env_local.clone(),
+                    hash.clone(),
+                    peer.connect(env_local).await?,
+                )
+                .await
+            }
+        })
         .for_each_concurrent(None, |block_res| {
             match block_res {
-                Ok(block) => send.clone().try_send(block).unwrap_or_default(),
+                Ok((block, conn)) => {
+                    conn.recycle();
+                    send.clone().try_send(block).unwrap_or_default();
+                }
                 Err(e) => warn!(env.logger, "Error fetching block from peer: {}", e),
             }
             futures::future::ready(())
@@ -380,11 +371,11 @@ pub async fn fetch_block(
     Ok(match fetch_block_from_self(&*env, hash).await? {
         Some(block) => Some(block),
         None => {
-            info!(
+            debug!(
                 env.logger,
                 "Block is pruned from Core, attempting fetch from peers."
             );
-            if let Some(block) = fetch_block_from_peer_set(env.clone(), peers, hash).await {
+            if let Some(block) = fetch_block_from_peers(env.clone(), peers, hash).await {
                 Some(block)
             } else {
                 warn!(env.logger, "Could not fetch block from peers.");

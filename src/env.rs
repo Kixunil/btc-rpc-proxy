@@ -7,7 +7,7 @@ use slog::Logger;
 use tokio::sync::Mutex;
 
 use crate::client::RpcClient;
-use crate::fetch_blocks::{PeerHandle, PeerList};
+use crate::fetch_blocks::{PeerHandle, Peers};
 use crate::users::Users;
 
 #[derive(Debug)]
@@ -24,7 +24,7 @@ pub struct Env {
     pub users: Users,
     pub logger: Logger,
     pub peer_timeout: Duration,
-    pub peers: Mutex<PeerList>,
+    pub peers: Mutex<Peers>,
     pub max_peer_age: Duration,
 }
 impl Env {
@@ -35,6 +35,10 @@ impl Env {
         Arc::new(self)
     }
     pub async fn get_peers(&self) -> Result<Vec<PeerHandle>, Error> {
-        self.peers.lock().await.get_peers(self).await
+        self.peers
+            .lock()
+            .await
+            .get_peers(&self.rpc_client, self.max_peer_age)
+            .await
     }
 }

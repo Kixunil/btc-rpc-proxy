@@ -55,7 +55,7 @@ impl<'de> Deserialize<'de> for SingleOrBatchRpcRequest {
                 self,
                 mut seq: A,
             ) -> Result<Self::Value, A::Error> {
-                let mut res = Vec::new();
+                let mut res = Vec::with_capacity(seq.size_hint().unwrap_or(16));
                 while let Some(elem) = seq.next_element()? {
                     res.push(elem);
                 }

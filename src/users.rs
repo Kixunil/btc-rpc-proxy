@@ -38,7 +38,6 @@ impl Users {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
 pub struct User {
     pub password: String,
     pub allowed_calls: HashSet<String>,

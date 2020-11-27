@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use anyhow::Error;
-use btc_rpc_proxy::{AuthSource, Env, PeerList, RpcClient, TorEnv, Users};
+use btc_rpc_proxy::{AuthSource, Env, Peers, RpcClient, TorEnv, Users};
 use slog::Drain;
 use tokio::sync::Mutex;
 
@@ -43,7 +43,7 @@ pub async fn create_env() -> Result<Env, Error> {
         users: Users(config.user),
         logger,
         peer_timeout: Duration::from_secs(config.peer_timeout),
-        peers: Mutex::new(PeerList::new()),
+        peers: Mutex::new(Peers::new()),
         max_peer_age: Duration::from_secs(config.max_peer_age),
     })
 }
