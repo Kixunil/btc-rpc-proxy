@@ -1,4 +1,5 @@
-#[macro_use]
+#![type_length_limit = "1630928"]
+
 extern crate configure_me;
 #[macro_use]
 extern crate serde;

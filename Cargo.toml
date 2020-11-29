@@ -13,7 +13,7 @@ name = "btc_rpc_proxy"
 path = "src/lib.rs"
 
 [[bin]]
-name = "btc-rpc-proxy"
+name = "btc_rpc_proxy"
 path = "src/main.rs"
 
 [package.metadata.configure_me]

@@ -6,13 +6,17 @@ use btc_rpc_proxy::{AuthSource, Peers, RpcClient, State, TorState, Users};
 use slog::Drain;
 use tokio::sync::RwLock;
 
-use config::ResultExt;
-
-include_config!();
+#[allow(dead_code)]
+#[allow(unused_mut)]
+#[allow(unused_variables)]
+mod config {
+    include!(concat!(env!("OUT_DIR"), "/configure_me_config.rs"));
+}
+use self::config::{Config, ResultExt};
 
 pub fn create_state() -> Result<State, Error> {
-    let (config, _) = config::Config::including_optional_config_files(std::iter::empty::<&str>())
-        .unwrap_or_exit();
+    let (config, _) =
+        Config::including_optional_config_files(std::iter::empty::<&str>()).unwrap_or_exit();
 
     let auth = AuthSource::from_config(
         config.bitcoind_user,

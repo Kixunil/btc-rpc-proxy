@@ -53,7 +53,7 @@ impl<T> ApplyMut for T {}
 pub mod old_rust {
     pub trait StrCompat {
         fn strip_prefix<'a>(&'a self, prefix: &str) -> Option<&'a str>;
-        fn strip_suffix<'a>(&'a self, prefix: &str) -> Option<&'a str>;
+        fn strip_suffix<'a>(&'a self, suffix: &str) -> Option<&'a str>;
     }
     impl StrCompat for str {
         fn strip_prefix<'a>(&'a self, prefix: &str) -> Option<&'a str> {
@@ -64,7 +64,7 @@ pub mod old_rust {
             }
         }
         fn strip_suffix<'a>(&'a self, suffix: &str) -> Option<&'a str> {
-            if let Some(s) = self.rmatches(prefix).next() {
+            if let Some(s) = self.rmatches(suffix).next() {
                 Some(&self[..(self.len() - s.len())])
             } else {
                 None
