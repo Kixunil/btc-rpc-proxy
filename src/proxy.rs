@@ -9,44 +9,47 @@ use hyper::{
 use tokio::stream::StreamExt;
 
 use crate::client::{RpcError, RpcResponse};
-use crate::env::Env;
+use crate::state::State;
 
-pub async fn proxy_request(env: Arc<Env>, request: Request<Body>) -> Result<Response<Body>, Error> {
+pub async fn proxy_request(
+    state: Arc<State>,
+    request: Request<Body>,
+) -> Result<Response<Body>, Error> {
     let (parts, body) = request.into_parts();
     if parts.uri.path() == "/" || parts.uri.path() == "" || parts.uri.path().starts_with("/wallet/")
     {
         if parts.method == Method::POST {
-            let env_local = env.clone();
+            let state_local = state.clone();
             if let Some((name, user)) = parts
                 .headers
                 .get(AUTHORIZATION)
-                .and_then(|auth| env_local.users.get(auth))
+                .and_then(|auth| state_local.users.get(auth))
             {
                 let body_data = body.collect::<Result<Bytes, _>>().await?;
                 match serde_json::from_slice(body_data.as_ref()) {
                     Ok(req) => {
-                        let env_local = env.clone();
+                        let state_local = state.clone();
                         let name_local = Arc::new(name);
-                        let response = env
+                        let response = state
                             .rpc_client
                             .send(parts.uri.path(), &req, move |_path, req| {
                                 use futures::TryFutureExt;
                                 let name_local_ok = name_local.clone();
                                 let name_local_err = name_local.clone();
-                                let env_local_ok = env_local.clone();
-                                let env_local_err = env_local.clone();
-                                user.intercept(env_local.clone(), req)
+                                let state_local_ok = state_local.clone();
+                                let state_local_err = state_local.clone();
+                                user.intercept(state_local.clone(), req)
                                     .map_ok(move |res| {
                                         if res.is_some() {
                                             info!(
-                                                env_local_ok.logger,
+                                                state_local_ok.logger,
                                                 "{} called {}: INTERCEPTED",
                                                 name_local_ok,
                                                 req.method.0
                                             )
                                         } else {
                                             info!(
-                                                env_local_ok.logger,
+                                                state_local_ok.logger,
                                                 "{} called {}: FORWARDED",
                                                 name_local_ok,
                                                 req.method.0
@@ -56,7 +59,7 @@ pub async fn proxy_request(env: Arc<Env>, request: Request<Body>) -> Result<Resp
                                     })
                                     .map_err(move |err| {
                                         info!(
-                                            env_local_err.logger,
+                                            state_local_err.logger,
                                             "{} called {}: ERROR {} {}",
                                             name_local_err,
                                             req.method.0,

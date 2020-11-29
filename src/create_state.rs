@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use anyhow::Error;
-use btc_rpc_proxy::{AuthSource, Env, Peers, RpcClient, TorEnv, Users};
+use btc_rpc_proxy::{AuthSource, Peers, RpcClient, State, TorState, Users};
 use slog::Drain;
 use tokio::sync::Mutex;
 
@@ -9,7 +9,7 @@ use config::ResultExt;
 
 include_config!();
 
-pub async fn create_env() -> Result<Env, Error> {
+pub fn create_state() -> Result<State, Error> {
     let (config, _) = config::Config::including_optional_config_files(std::iter::empty::<&str>())
         .unwrap_or_exit();
 
@@ -26,7 +26,7 @@ pub async fn create_env() -> Result<Env, Error> {
     let rpc_client = RpcClient::new(auth, bitcoin_uri)?;
 
     let tor_only = config.tor_only;
-    let tor = config.tor_proxy.map(|proxy| TorEnv {
+    let tor = config.tor_proxy.map(|proxy| TorState {
         proxy,
         only: tor_only,
     });
@@ -36,7 +36,7 @@ pub async fn create_env() -> Result<Env, Error> {
     let drain = slog_async::Async::new(drain).build().fuse();
     let logger = slog::Logger::root(drain, slog::o!());
 
-    Ok(Env {
+    Ok(State {
         bind: (config.bind_address, config.bind_port).into(),
         rpc_client,
         tor,

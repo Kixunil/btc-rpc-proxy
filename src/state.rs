@@ -11,23 +11,23 @@ use crate::fetch_blocks::{PeerHandle, Peers};
 use crate::users::Users;
 
 #[derive(Debug)]
-pub struct TorEnv {
+pub struct TorState {
     pub proxy: SocketAddr,
     pub only: bool,
 }
 
 #[derive(Debug)]
-pub struct Env {
+pub struct State {
     pub bind: SocketAddr,
     pub rpc_client: RpcClient,
-    pub tor: Option<TorEnv>,
+    pub tor: Option<TorState>,
     pub users: Users,
     pub logger: Logger,
     pub peer_timeout: Duration,
     pub peers: Mutex<Peers>,
     pub max_peer_age: Duration,
 }
-impl Env {
+impl State {
     pub fn leak(self) -> &'static Self {
         Box::leak(Box::new(self))
     }

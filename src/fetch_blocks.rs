@@ -22,8 +22,8 @@ use futures::FutureExt;
 use socks::Socks5Stream;
 
 use crate::client::{RpcClient, RpcError, RpcRequest, MISC_ERROR_CODE, PRUNE_ERROR_MESSAGE};
-use crate::env::{Env, TorEnv};
 use crate::rpc_methods::{GetBlock, GetBlockParams, GetPeerInfo};
+use crate::state::{State, TorState};
 
 type VersionMessageProducer = Box<dyn Fn(Address) -> RawNetworkMessage + Send + Sync>;
 
@@ -120,12 +120,12 @@ impl Write for BitcoinPeerConnection {
     }
 }
 impl BitcoinPeerConnection {
-    pub async fn connect(env: Arc<Env>, addr: Address) -> Result<Self, Error> {
+    pub async fn connect(state: Arc<State>, addr: Address) -> Result<Self, Error> {
         tokio::time::timeout(
-            env.peer_timeout,
+            state.peer_timeout,
             tokio::task::spawn_blocking(move || {
-                let mut stream = match (addr.socket_addr(), &env.tor) {
-                    (Ok(addr), Some(TorEnv { only: false, .. })) | (Ok(addr), None) => {
+                let mut stream = match (addr.socket_addr(), &state.tor) {
+                    (Ok(addr), Some(TorState { only: false, .. })) | (Ok(addr), None) => {
                         BitcoinPeerConnection::ClearNet(TcpStream::connect(addr)?)
                     }
                     (Ok(addr), Some(tor)) => {
@@ -199,7 +199,7 @@ pub struct PeerHandle {
     send: mpsc::Sender<BitcoinPeerConnection>,
 }
 impl PeerHandle {
-    pub async fn connect(&mut self, env: Arc<Env>) -> Result<RecyclableConnection, Error> {
+    pub async fn connect(&mut self, state: Arc<State>) -> Result<RecyclableConnection, Error> {
         if let Some(conn) = self.conn.take() {
             Ok(RecyclableConnection {
                 conn,
@@ -207,7 +207,7 @@ impl PeerHandle {
             })
         } else {
             Ok(RecyclableConnection {
-                conn: BitcoinPeerConnection::connect(env, (&self.addr).clone()).await?,
+                conn: BitcoinPeerConnection::connect(state, (&self.addr).clone()).await?,
                 send: self.send.clone(),
             })
         }
@@ -235,8 +235,8 @@ impl std::ops::DerefMut for RecyclableConnection {
     }
 }
 
-async fn fetch_block_from_self(env: &Env, hash: BlockHash) -> Result<Option<Block>, RpcError> {
-    match env
+async fn fetch_block_from_self(state: &State, hash: BlockHash) -> Result<Option<Block>, RpcError> {
+    match state
         .rpc_client
         .call(&RpcRequest {
             id: None,
@@ -260,11 +260,11 @@ async fn fetch_block_from_self(env: &Env, hash: BlockHash) -> Result<Option<Bloc
 }
 
 async fn fetch_block_from_peer<'a>(
-    env: Arc<Env>,
+    state: Arc<State>,
     hash: BlockHash,
     mut conn: RecyclableConnection,
 ) -> Result<(Block, RecyclableConnection), Error> {
-    tokio::time::timeout(env.peer_timeout, async move {
+    tokio::time::timeout(state.peer_timeout, async move {
         conn = tokio::task::spawn_blocking(move || {
             RawNetworkMessage {
                 magic: Bitcoin.magic(),
@@ -316,7 +316,7 @@ async fn fetch_block_from_peer<'a>(
                     })
                     .await??;
                 }
-                m => warn!(env.logger, "Invalid Message Received: {:?}", m),
+                m => warn!(state.logger, "Invalid Message Received: {:?}", m),
             }
         }
     })
@@ -324,7 +324,7 @@ async fn fetch_block_from_peer<'a>(
 }
 
 async fn fetch_block_from_peers(
-    env: Arc<Env>,
+    state: Arc<State>,
     peers: Vec<PeerHandle>,
     hash: BlockHash,
 ) -> Option<Block> {
@@ -333,15 +333,15 @@ async fn fetch_block_from_peers(
     let (send, mut recv) = futures::channel::mpsc::channel(1);
     let fut_unordered: futures::stream::FuturesUnordered<_> =
         peers.into_iter().map(futures::future::ready).collect();
-    let env_local = env.clone();
+    let state_local = state.clone();
     let runner = fut_unordered
         .then(move |mut peer| {
-            let env_local = env_local.clone();
+            let state_local = state_local.clone();
             async move {
                 fetch_block_from_peer(
-                    env_local.clone(),
+                    state_local.clone(),
                     hash.clone(),
-                    peer.connect(env_local).await?,
+                    peer.connect(state_local).await?,
                 )
                 .await
             }
@@ -352,7 +352,7 @@ async fn fetch_block_from_peers(
                     conn.recycle();
                     send.clone().try_send(block).unwrap_or_default();
                 }
-                Err(e) => warn!(env.logger, "Error fetching block from peer: {}", e),
+                Err(e) => warn!(state.logger, "Error fetching block from peer: {}", e),
             }
             futures::future::ready(())
         });
@@ -364,21 +364,21 @@ async fn fetch_block_from_peers(
 }
 
 pub async fn fetch_block(
-    env: Arc<Env>,
+    state: Arc<State>,
     peers: Vec<PeerHandle>,
     hash: BlockHash,
 ) -> Result<Option<Block>, RpcError> {
-    Ok(match fetch_block_from_self(&*env, hash).await? {
+    Ok(match fetch_block_from_self(&*state, hash).await? {
         Some(block) => Some(block),
         None => {
             debug!(
-                env.logger,
+                state.logger,
                 "Block is pruned from Core, attempting fetch from peers."
             );
-            if let Some(block) = fetch_block_from_peers(env.clone(), peers, hash).await {
+            if let Some(block) = fetch_block_from_peers(state.clone(), peers, hash).await {
                 Some(block)
             } else {
-                warn!(env.logger, "Could not fetch block from peers.");
+                warn!(state.logger, "Could not fetch block from peers.");
                 None
             }
         }

@@ -10,11 +10,11 @@ use crate::client::{
     GenericRpcMethod, RpcError, RpcMethod, RpcRequest, RpcResponse, METHOD_NOT_ALLOWED_ERROR_CODE,
     METHOD_NOT_ALLOWED_ERROR_MESSAGE, MISC_ERROR_CODE, PRUNE_ERROR_MESSAGE,
 };
-use crate::env::Env;
 use crate::fetch_blocks::fetch_block;
 use crate::rpc_methods::{
     GetBlock, GetBlockHeader, GetBlockHeaderParams, GetBlockResult, GetBlockchainInfo,
 };
+use crate::state::State;
 
 #[cfg(feature = "compat")]
 use crate::util::compat::StrCompat;
@@ -46,7 +46,7 @@ pub struct User {
 impl User {
     pub async fn intercept<'a>(
         &self,
-        env: Arc<Env>,
+        state: Arc<State>,
         req: &'a RpcRequest<GenericRpcMethod>,
     ) -> Result<Option<RpcResponse<GenericRpcMethod>>, RpcError> {
         if self.allowed_calls.contains(&*req.method) {
@@ -56,8 +56,8 @@ impl User {
                 match req.params.get(1).unwrap_or(&1_u64.into()) {
                     Value::Number(ref n) if n.as_u64() == Some(0) => {
                         match fetch_block(
-                            env.clone(),
-                            env.get_peers().await?,
+                            state.clone(),
+                            state.get_peers().await?,
                             serde_json::from_value(req.params[0].clone()).map_err(Error::from)?,
                         )
                         .await
@@ -95,8 +95,16 @@ impl User {
                             params: GetBlockHeaderParams(hash, Some(true)),
                         };
                         match futures::try_join!(
-                            async { env.rpc_client.call(&fetch_header_req).await?.into_result() },
-                            async { fetch_block(env.clone(), env.get_peers().await?, hash).await }
+                            async {
+                                state
+                                    .rpc_client
+                                    .call(&fetch_header_req)
+                                    .await?
+                                    .into_result()
+                            },
+                            async {
+                                fetch_block(state.clone(), state.get_peers().await?, hash).await
+                            }
                         ) {
                             Ok((header, Some(block))) => Ok(Some(RpcResponse {
                                 id: req.id.clone(),
@@ -142,7 +150,7 @@ impl User {
                     _ => Ok(None), // TODO
                 }
             } else if self.fetch_blocks && &*req.method == GetBlockchainInfo.as_str() {
-                let mut res = env.rpc_client.call(req).await?;
+                let mut res = state.rpc_client.call(req).await?;
                 res.result.as_mut().map(|r| match r {
                     Value::Object(o) => o.get_mut("pruned").map(|p| *p = Value::Bool(false)),
                     _ => None,

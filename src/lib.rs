@@ -4,10 +4,10 @@ extern crate derive_more;
 extern crate slog;
 
 pub mod client;
-pub mod env;
 pub mod fetch_blocks;
 pub mod proxy;
 pub mod rpc_methods;
+pub mod state;
 pub mod users;
 pub mod util;
 
@@ -22,23 +22,23 @@ use hyper::{
 };
 
 pub use crate::client::{AuthSource, RpcClient};
-pub use crate::env::{Env, TorEnv};
 pub use crate::fetch_blocks::Peers;
 use crate::proxy::proxy_request;
+pub use crate::state::{State, TorState};
 pub use crate::users::{User, Users};
 
-pub async fn main(env: Arc<Env>) -> Result<(), Error> {
-    let env_local = env.clone();
+pub async fn main(state: Arc<State>) -> Result<(), Error> {
+    let state_local = state.clone();
     let make_service = make_service_fn(move |_conn| {
-        let env_local_local = env_local.clone();
+        let state_local_local = state_local.clone();
         async move {
             Ok::<_, Infallible>(service_fn(move |req| {
-                proxy_request(env_local_local.clone(), req).boxed()
+                proxy_request(state_local_local.clone(), req).boxed()
             }))
         }
     });
 
-    let server = Server::bind(&env.bind).serve(make_service);
+    let server = Server::bind(&state.bind).serve(make_service);
 
     Ok(server.await?)
 }
