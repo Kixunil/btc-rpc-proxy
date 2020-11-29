@@ -16,8 +16,8 @@ use crate::rpc_methods::{
 };
 use crate::state::State;
 
-#[cfg(feature = "compat")]
-use crate::util::compat::StrCompat;
+#[cfg(feature = "old_rust")]
+use crate::util::old_rust::StrCompat;
 
 #[derive(Debug, serde::Deserialize)]
 pub struct Users(pub HashMap<String, User>);
@@ -103,7 +103,8 @@ impl User {
                                     .into_result()
                             },
                             async {
-                                fetch_block(state.clone(), state.get_peers().await?, hash).await
+                                fetch_block(state.clone(), state.clone().get_peers().await?, hash)
+                                    .await
                             }
                         ) {
                             Ok((header, Some(block))) => Ok(Some(RpcResponse {

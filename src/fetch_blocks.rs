@@ -1,10 +1,11 @@
 use std::io::{Read, Write};
+use std::iter::FromIterator;
 use std::net::TcpStream;
 use std::sync::Arc;
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::Error;
+use async_channel as mpmc;
 use bitcoin::{
     consensus::{Decodable, Encodable},
     hash_types::BlockHash,
@@ -17,7 +18,6 @@ use bitcoin::{
     },
     Block,
 };
-use futures::channel::mpsc;
 use futures::FutureExt;
 use socks::Socks5Stream;
 
@@ -64,17 +64,14 @@ impl Peers {
             peers: Vec::new(),
         }
     }
-    pub async fn get_peers(
-        &mut self,
-        client: &RpcClient,
-        max_peer_age: Duration,
-    ) -> Result<Vec<PeerHandle>, Error> {
-        if self
-            .fetched
+    pub fn stale(&self, max_peer_age: Duration) -> bool {
+        self.fetched
             .map(|f| f.elapsed() > max_peer_age)
             .unwrap_or(true)
-        {
-            self.peers = client
+    }
+    pub async fn updated(client: &RpcClient) -> Result<Self, Error> {
+        Ok(Self {
+            peers: client
                 .call(&RpcRequest {
                     id: None,
                     method: GetPeerInfo,
@@ -86,10 +83,12 @@ impl Peers {
                 .filter(|p| !p.inbound)
                 .filter(|p| p.servicesnames.contains("NETWORK"))
                 .map(|p| p.into_address().map(Peer::new))
-                .collect::<Result<_, _>>()?;
-            self.fetched = Some(Instant::now());
-        }
-        Ok(self.peers.iter_mut().map(|p| p.handle()).collect())
+                .collect::<Result<_, _>>()?,
+            fetched: Some(Instant::now()),
+        })
+    }
+    pub fn handles<C: FromIterator<PeerHandle>>(&self) -> C {
+        self.peers.iter().map(|p| p.handle()).collect()
     }
 }
 
@@ -116,6 +115,24 @@ impl Write for BitcoinPeerConnection {
         match self {
             BitcoinPeerConnection::ClearNet(a) => a.flush(),
             BitcoinPeerConnection::Tor(a) => a.flush(),
+        }
+    }
+    fn write_vectored(&mut self, bufs: &[std::io::IoSlice<'_>]) -> std::io::Result<usize> {
+        match self {
+            BitcoinPeerConnection::ClearNet(a) => a.write_vectored(bufs),
+            BitcoinPeerConnection::Tor(a) => a.write_vectored(bufs),
+        }
+    }
+    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
+        match self {
+            BitcoinPeerConnection::ClearNet(a) => a.write_all(buf),
+            BitcoinPeerConnection::Tor(a) => a.write_all(buf),
+        }
+    }
+    fn write_fmt(&mut self, fmt: std::fmt::Arguments<'_>) -> std::io::Result<()> {
+        match self {
+            BitcoinPeerConnection::ClearNet(a) => a.write_fmt(fmt),
+            BitcoinPeerConnection::Tor(a) => a.write_fmt(fmt),
         }
     }
 }
@@ -171,18 +188,18 @@ impl BitcoinPeerConnection {
 
 pub struct Peer {
     addr: Address,
-    send: mpsc::Sender<BitcoinPeerConnection>,
-    recv: mpsc::Receiver<BitcoinPeerConnection>,
+    send: mpmc::Sender<BitcoinPeerConnection>,
+    recv: mpmc::Receiver<BitcoinPeerConnection>,
 }
 impl Peer {
     pub fn new(addr: Address) -> Self {
-        let (send, recv) = mpsc::channel(1);
+        let (send, recv) = mpmc::bounded(1);
         Peer { addr, send, recv }
     }
-    pub fn handle(&mut self) -> PeerHandle {
+    pub fn handle(&self) -> PeerHandle {
         PeerHandle {
             addr: self.addr.clone(),
-            conn: self.recv.try_next().ok().and_then(|a| a),
+            conn: self.recv.try_recv().ok(),
             send: self.send.clone(),
         }
     }
@@ -196,7 +213,7 @@ impl std::fmt::Debug for Peer {
 pub struct PeerHandle {
     addr: Address,
     conn: Option<BitcoinPeerConnection>,
-    send: mpsc::Sender<BitcoinPeerConnection>,
+    send: mpmc::Sender<BitcoinPeerConnection>,
 }
 impl PeerHandle {
     pub async fn connect(&mut self, state: Arc<State>) -> Result<RecyclableConnection, Error> {
@@ -216,10 +233,10 @@ impl PeerHandle {
 
 pub struct RecyclableConnection {
     conn: BitcoinPeerConnection,
-    send: mpsc::Sender<BitcoinPeerConnection>,
+    send: mpmc::Sender<BitcoinPeerConnection>,
 }
 impl RecyclableConnection {
-    fn recycle(mut self) {
+    fn recycle(self) {
         self.send.try_send(self.conn).unwrap_or_default()
     }
 }
@@ -346,7 +363,7 @@ async fn fetch_block_from_peers(
                 .await
             }
         })
-        .for_each_concurrent(None, |block_res| {
+        .for_each_concurrent(state.max_peer_concurrency, |block_res| {
             match block_res {
                 Ok((block, conn)) => {
                     conn.recycle();
@@ -378,7 +395,7 @@ pub async fn fetch_block(
             if let Some(block) = fetch_block_from_peers(state.clone(), peers, hash).await {
                 Some(block)
             } else {
-                warn!(state.logger, "Could not fetch block from peers.");
+                error!(state.logger, "Could not fetch block from peers.");
                 None
             }
         }

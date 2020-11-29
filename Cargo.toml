@@ -6,7 +6,7 @@ authors = [
 description = "Finer-grained permission management for bitcoind."
 edition = "2018"
 name = "btc-rpc-proxy"
-version = "0.2.2"
+version = "0.2.3"
 
 [lib]
 name = "btc_rpc_proxy"
@@ -20,10 +20,12 @@ path = "src/main.rs"
 spec = "config_spec.toml"
 
 [features]
-compat = []
+old_rust = []
+debug_logs = ["slog/max_level_debug"]
 
 [dependencies]
 anyhow = "1.0.34"
+async-channel = "1.5.1"
 base32 = "0.4.0"
 base64 = "0.13.0"
 bitcoin = { version = "0.25.2", features = ["use-serde"] }
@@ -43,7 +45,7 @@ serde_json = "1.0.59"
 slog = "2.5.2"
 slog-async = "2.5.0"
 slog-term = "2.6.0"
-socks = "0.3.2"
+socks = "0.3.3"
 tokio = { version = "0.2.22", features = ["full"] }
 
 [build-dependencies]

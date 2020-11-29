@@ -16,8 +16,8 @@ use serde::{
 };
 use serde_json::Value;
 
-#[cfg(feature = "compat")]
-use crate::util::compat::StrCompat;
+#[cfg(feature = "old_rust")]
+use crate::util::old_rust::StrCompat;
 
 pub const MISC_ERROR_CODE: i64 = -1;
 pub const METHOD_NOT_ALLOWED_ERROR_CODE: i64 = -32604;

@@ -41,14 +41,14 @@ pub async fn proxy_request(
                                 user.intercept(state_local.clone(), req)
                                     .map_ok(move |res| {
                                         if res.is_some() {
-                                            info!(
+                                            debug!(
                                                 state_local_ok.logger,
                                                 "{} called {}: INTERCEPTED",
                                                 name_local_ok,
                                                 req.method.0
                                             )
                                         } else {
-                                            info!(
+                                            debug!(
                                                 state_local_ok.logger,
                                                 "{} called {}: FORWARDED",
                                                 name_local_ok,
@@ -58,7 +58,7 @@ pub async fn proxy_request(
                                         res
                                     })
                                     .map_err(move |err| {
-                                        info!(
+                                        warn!(
                                             state_local_err.logger,
                                             "{} called {}: ERROR {} {}",
                                             name_local_err,

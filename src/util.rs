@@ -30,8 +30,27 @@ pub fn deserialize_parse<'de, D: Deserializer<'de>, T: std::str::FromStr>(
         .map_err(|_| serde::de::Error::invalid_value(Unexpected::Str(&s), &"a valid URI"))
 }
 
-#[cfg(feature = "compat")]
-pub mod compat {
+pub trait Apply: Sized {
+    fn apply<F: FnOnce(Self) -> T, T>(self, f: F) -> T {
+        f(self)
+    }
+}
+impl<T: Sized> Apply for T {}
+pub trait ApplyRef {
+    fn apply_ref<F: FnOnce(&Self) -> T, T>(&self, f: F) -> T {
+        f(self)
+    }
+}
+impl<T> ApplyRef for T {}
+pub trait ApplyMut {
+    fn apply_mut<F: FnOnce(&mut Self) -> T, T>(&mut self, f: F) -> T {
+        f(self)
+    }
+}
+impl<T> ApplyMut for T {}
+
+#[cfg(feature = "old_rust")]
+pub mod old_rust {
     pub trait StrCompat {
         fn strip_prefix<'a>(&'a self, prefix: &str) -> Option<&'a str>;
         fn strip_suffix<'a>(&'a self, prefix: &str) -> Option<&'a str>;

@@ -1,9 +1,10 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Error;
 use btc_rpc_proxy::{AuthSource, Peers, RpcClient, State, TorState, Users};
 use slog::Drain;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use config::ResultExt;
 
@@ -43,7 +44,8 @@ pub fn create_state() -> Result<State, Error> {
         users: Users(config.user),
         logger,
         peer_timeout: Duration::from_secs(config.peer_timeout),
-        peers: Mutex::new(Peers::new()),
+        peers: RwLock::new(Arc::new(Peers::new())),
         max_peer_age: Duration::from_secs(config.max_peer_age),
+        max_peer_concurrency: config.max_peer_concurrency,
     })
 }

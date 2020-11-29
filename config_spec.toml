@@ -73,6 +73,11 @@ default = "300"
 doc = "How many seconds to wait before refreshing the peer list"
 
 [[param]]
+name = "max_peer_concurrency"
+type = "usize"
+doc = "How many peers to reach out to concurrently for block data"
+
+[[param]]
 name = "tor_proxy"
 type = "std::net::SocketAddr"
 optional = true
