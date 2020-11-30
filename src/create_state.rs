@@ -28,7 +28,7 @@ pub fn create_state() -> Result<State, Error> {
         config.bitcoind_address, config.bitcoind_port
     )
     .parse()?;
-    let rpc_client = RpcClient::new(auth, bitcoin_uri)?;
+    let rpc_client = RpcClient::new(auth, bitcoin_uri);
 
     let tor_only = config.tor_only;
     let tor = config.tor_proxy.map(|proxy| TorState {

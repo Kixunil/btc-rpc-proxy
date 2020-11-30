@@ -1,5 +1,7 @@
 use std::future::Future;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::SystemTime;
 
 use anyhow::{anyhow, Error};
 use futures::{channel::mpsc, StreamExt, TryStreamExt};
@@ -15,6 +17,7 @@ use serde::{
     ser::{Serialize, Serializer},
 };
 use serde_json::Value;
+use tokio::sync::RwLock;
 
 pub const MISC_ERROR_CODE: i64 = -1;
 pub const METHOD_NOT_ALLOWED_ERROR_CODE: i64 = -32604;
@@ -189,17 +192,17 @@ impl<T: RpcMethod> RpcResponse<T> {
 
 #[derive(Debug)]
 pub struct RpcClient {
-    authorization: HeaderValue,
+    authorization: AuthSource,
     uri: Uri,
     client: HttpClient,
 }
 impl RpcClient {
-    pub fn new(auth: AuthSource, uri: Uri) -> Result<Self, Error> {
-        Ok(RpcClient {
-            authorization: auth.try_load()?,
+    pub fn new(auth: AuthSource, uri: Uri) -> Self {
+        RpcClient {
+            authorization: auth, // DO NOT try to eager evaluate this, it can change while the program is running
             uri,
             client: HttpClient::new(),
-        })
+        }
     }
     pub async fn send<
         'a,
@@ -227,7 +230,7 @@ impl RpcClient {
                         .request(
                             Request::builder()
                                 .method(Method::POST)
-                                .header(AUTHORIZATION, &self.authorization)
+                                .header(AUTHORIZATION, self.authorization.try_load().await?)
                                 .uri(Uri::from_parts(parts)?)
                                 .body(serde_json::to_string(req)?.into())?,
                         )
@@ -266,7 +269,7 @@ impl RpcClient {
                         .request(
                             Request::builder()
                                 .method(Method::POST)
-                                .header(AUTHORIZATION, &client.authorization)
+                                .header(AUTHORIZATION, client.authorization.try_load().await?)
                                 .uri(Uri::from_parts(parts).map_err(Error::from)?)
                                 .body(serde_json::to_string(&new_batch)?.into())
                                 .map_err(Error::from)?,
@@ -309,7 +312,7 @@ impl RpcClient {
             .request(
                 Request::builder()
                     .method(Method::POST)
-                    .header(AUTHORIZATION, &self.authorization)
+                    .header(AUTHORIZATION, self.authorization.try_load().await?)
                     .uri(&self.uri)
                     .body(serde_json::to_string(req)?.into())?,
             )
@@ -325,9 +328,17 @@ impl RpcClient {
     }
 }
 
+#[derive(Debug)]
 pub enum AuthSource {
-    Const { username: String, password: String },
-    CookieFile(PathBuf),
+    Const {
+        username: String,
+        password: String,
+        header: HeaderValue,
+    },
+    CookieFile {
+        path: PathBuf,
+        cached: RwLock<Option<Arc<(SystemTime, HeaderValue)>>>,
+    },
 }
 
 impl AuthSource {
@@ -337,8 +348,19 @@ impl AuthSource {
         file: Option<PathBuf>,
     ) -> Result<Self, Error> {
         match (user, password, file) {
-            (Some(username), Some(password), None) => Ok(AuthSource::Const { username, password }),
-            (None, None, Some(cookie_file)) => Ok(AuthSource::CookieFile(cookie_file)),
+            (Some(username), Some(password), None) => Ok(AuthSource::Const {
+                header: format!(
+                    "Basic {}",
+                    base64::encode(format!("{}:{}", username, password))
+                )
+                .parse()?,
+                username,
+                password,
+            }),
+            (None, None, Some(cookie_file)) => Ok(AuthSource::CookieFile {
+                path: cookie_file,
+                cached: RwLock::new(None),
+            }),
             // It could pull it from bitcoin.conf, but I don't think it's worth my time.
             // PRs open.
             (None, None, None) => Err(anyhow!("missing authentication information")),
@@ -348,8 +370,8 @@ impl AuthSource {
         }
     }
 
-    fn load_from_file(path: &PathBuf) -> Result<String, Error> {
-        Ok(std::fs::read_to_string(path).map(|mut cookie| {
+    async fn load_from_file(path: &PathBuf) -> Result<String, Error> {
+        Ok(tokio::fs::read_to_string(path).await.map(|mut cookie| {
             if cookie.ends_with('\n') {
                 cookie.pop();
             }
@@ -357,15 +379,26 @@ impl AuthSource {
         })?)
     }
 
-    pub fn try_load(&self) -> Result<HeaderValue, Error> {
-        Ok(format!(
-            "Basic {}",
-            match self {
-                AuthSource::Const { username, password } =>
-                    base64::encode(format!("{}:{}", username, password)),
-                AuthSource::CookieFile(path) => AuthSource::load_from_file(path)?,
+    pub async fn try_load(&self) -> Result<HeaderValue, Error> {
+        match self {
+            AuthSource::Const { ref header, .. } => Ok(header.clone()),
+            AuthSource::CookieFile {
+                ref path,
+                ref cached,
+            } => {
+                let cache = cached.read().await.clone();
+                let modified = tokio::fs::metadata(&path).await?.modified()?;
+                match cache {
+                    Some(cache) if modified == cache.0 => Ok(cache.1.clone()),
+                    _ => {
+                        let header: HeaderValue =
+                            format!("Basic {}", AuthSource::load_from_file(path).await?).parse()?;
+                        let new_cache = (modified, header.clone());
+                        *cached.write().await = Some(Arc::new(new_cache));
+                        Ok(header)
+                    }
+                }
             }
-        )
-        .parse()?)
+        }
     }
 }

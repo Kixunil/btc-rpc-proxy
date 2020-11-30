@@ -9,7 +9,6 @@ use tokio::sync::RwLock;
 use crate::client::RpcClient;
 use crate::fetch_blocks::{PeerHandle, Peers};
 use crate::users::Users;
-use crate::util::Apply;
 
 #[derive(Debug)]
 pub struct TorState {
@@ -41,8 +40,7 @@ impl State {
         if peers.stale(self.max_peer_age) {
             tokio::task::spawn(async move {
                 match Peers::updated(&self.rpc_client).await {
-                    Ok(peers) => std::mem::replace(&mut *self.peers.write().await, Arc::new(peers))
-                        .apply(|_| ()),
+                    Ok(peers) => *self.peers.write().await = Arc::new(peers),
                     Err(e) => error!(self.logger, "{}", e.context("updating peer list")),
                 }
             });
