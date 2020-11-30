@@ -41,6 +41,7 @@ impl Users {
 pub struct User {
     pub password: String,
     pub allowed_calls: HashSet<String>,
+    #[serde(default)]
     pub fetch_blocks: bool,
 }
 impl User {
