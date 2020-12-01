@@ -380,7 +380,7 @@ impl AuthSource {
             if cookie.ends_with('\n') {
                 cookie.pop();
             }
-            cookie
+            base64::encode(cookie)
         })?)
     }
 
