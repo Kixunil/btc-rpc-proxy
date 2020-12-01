@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, Context, Error};
 use futures::{channel::mpsc, StreamExt, TryStreamExt};
 use hyper::{
     body::Bytes,
@@ -320,7 +320,12 @@ impl RpcClient {
         let status = response.status();
         let body: Bytes =
             tokio::stream::StreamExt::collect::<Result<Bytes, _>>(response.into_body()).await?;
-        let mut rpc_response: RpcResponse<T> = serde_json::from_slice(&body)?;
+        let mut rpc_response: RpcResponse<T> = serde_json::from_slice(&body)
+            .with_context(|| format!("calling {}", req.method.as_str()))
+            .with_context(|| match std::str::from_utf8(&body) {
+                Ok(s) => format!("Response: {}: {}", status, s),
+                Err(e) => format!("Response: {}: Could not parse body: {}", status, e),
+            })?;
         if let Some(ref mut error) = rpc_response.error {
             error.status = Some(status);
         }
