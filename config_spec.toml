@@ -54,7 +54,7 @@ doc = "The port of the real bitcoind."
 
 [[param]]
 name = "user"
-type = "std::collections::HashMap<String, btc_rpc_proxy::User>"
+type = "std::collections::HashMap<String, btc_rpc_proxy::users::input::User>"
 merge_fn = "std::iter::Extend::extend"
 default = "Default::default()"
 argument = false
@@ -88,3 +88,7 @@ name = "tor_only"
 type = "bool"
 default = "false"
 doc = "Use tor for non-.onion peer connections"
+
+[[switch]]
+name = "default_fetch_blocks"
+doc = "Fetch blocks from peers for all users that do NOT specify fetch_blocks = false"

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Error;
-use btc_rpc_proxy::{AuthSource, Peers, RpcClient, State, TorState, Users};
+use btc_rpc_proxy::{AuthSource, Peers, RpcClient, State, TorState};
 use slog::Drain;
 use tokio::sync::RwLock;
 
@@ -45,7 +45,7 @@ pub fn create_state() -> Result<State, Error> {
         bind: (config.bind_address, config.bind_port).into(),
         rpc_client,
         tor,
-        users: Users(config.user),
+        users: btc_rpc_proxy::users::input::map_default(config.user, config.default_fetch_blocks),
         logger,
         peer_timeout: Duration::from_secs(config.peer_timeout),
         peers: RwLock::new(Arc::new(Peers::new())),
