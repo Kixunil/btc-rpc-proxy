@@ -19,6 +19,32 @@ use crate::state::State;
 #[cfg(feature = "old_rust")]
 use crate::util::old_rust::StrCompat;
 
+pub mod input {
+    use std::collections::{HashMap, HashSet};
+
+    #[derive(Debug, serde::Deserialize)]
+    pub struct User {
+        pub password: String,
+        pub allowed_calls: HashSet<String>,
+        #[serde(default)]
+        pub fetch_blocks: Option<bool>,
+    }
+
+    impl User {
+        fn map_default(self, default_fetch_blocks: bool) -> super::User {
+            super::User {
+                password: self.password,
+                allowed_calls: self.allowed_calls,
+                fetch_blocks: self.fetch_blocks.unwrap_or(default_fetch_blocks),
+            }
+        }
+    }
+
+    pub fn map_default(users: HashMap<String, User>, default_fetch_blocks: bool) -> super::Users {
+        super::Users(users.into_iter().map(|(name, user)| (name, user.map_default(default_fetch_blocks))).collect())
+    }
+}
+
 #[derive(Debug, serde::Deserialize)]
 pub struct Users(pub HashMap<String, User>);
 impl Users {
@@ -169,5 +195,52 @@ impl User {
                 status: Some(StatusCode::FORBIDDEN),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::{HashMap, HashSet};
+
+    fn check(input: Option<bool>, default: bool, expected: bool) {
+        let mut users = HashMap::new();
+        users.insert("satoshi".to_owned(), super::input::User {
+            password: "secret".to_owned(),
+            allowed_calls: HashSet::new(),
+            fetch_blocks: input,
+        });
+
+        let result = super::input::map_default(users, default);
+        assert_eq!(result.0["satoshi"].fetch_blocks, expected);
+    }
+
+    #[test]
+    fn default_fetch_blocks_none_false() {
+        check(None, false, false);
+    }
+
+    #[test]
+    fn default_fetch_blocks_none_true() {
+        check(None, true, true);
+    }
+
+    #[test]
+    fn default_fetch_blocks_some_false_false() {
+        check(Some(false), false, false);
+    }
+
+    #[test]
+    fn default_fetch_blocks_some_false_true() {
+        check(Some(false), true, false);
+    }
+
+    #[test]
+    fn default_fetch_blocks_some_true_false() {
+        check(Some(true), false, true);
+    }
+
+    #[test]
+    fn default_fetch_blocks_some_true_true() {
+        check(Some(true), true, true);
     }
 }
