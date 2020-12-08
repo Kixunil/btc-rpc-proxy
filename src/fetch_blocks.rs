@@ -21,8 +21,8 @@ use bitcoin::{
 use futures::FutureExt;
 use socks::Socks5Stream;
 
-use crate::client::{RpcClient, RpcError, RpcRequest, MISC_ERROR_CODE, PRUNE_ERROR_MESSAGE};
-use crate::rpc_methods::{GetBlock, GetBlockParams, GetPeerInfo};
+use crate::client::{RpcClient, RpcError, ClientError, RpcRequest, MISC_ERROR_CODE, PRUNE_ERROR_MESSAGE};
+use crate::rpc_methods::{GetBlock, GetBlockParams, GetPeerInfo, PeerAddressError};
 use crate::state::{State, TorState};
 
 type VersionMessageProducer = Box<dyn Fn(Address) -> RawNetworkMessage + Send + Sync>;
@@ -69,7 +69,7 @@ impl Peers {
             .map(|f| f.elapsed() > max_peer_age)
             .unwrap_or(true)
     }
-    pub async fn updated(client: &RpcClient) -> Result<Self, Error> {
+    pub async fn updated(client: &RpcClient) -> Result<Self, PeerUpdateError> {
         Ok(Self {
             peers: client
                 .call(&RpcRequest {
@@ -90,6 +90,16 @@ impl Peers {
     pub fn handles<C: FromIterator<PeerHandle>>(&self) -> C {
         self.peers.iter().map(|p| p.handle()).collect()
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PeerUpdateError {
+    #[error("Bitcoin RPC failed")]
+    Rpc(#[from] RpcError),
+    #[error("failed to call Bitcoin RPC")]
+    Client(#[from] ClientError),
+    #[error("invalid peer address")]
+    InvalidPeerAddress(#[from] PeerAddressError),
 }
 
 pub enum BitcoinPeerConnection {
@@ -390,12 +400,13 @@ pub async fn fetch_block(
         None => {
             debug!(
                 state.logger,
-                "Block is pruned from Core, attempting fetch from peers."
+                "Block is pruned from Core, attempting fetch from peers.";
+                "block_hash" => %hash
             );
             if let Some(block) = fetch_block_from_peers(state.clone(), peers, hash).await {
                 Some(block)
             } else {
-                error!(state.logger, "Could not fetch block from peers.");
+                error!(state.logger, "Could not fetch block from peers."; "block_hash" => %hash);
                 None
             }
         }

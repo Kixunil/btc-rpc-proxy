@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use anyhow::{anyhow, Context, Error};
+use anyhow::{anyhow, Error};
 use futures::{channel::mpsc, StreamExt, TryStreamExt};
 use hyper::{
     body::Bytes,
@@ -120,7 +120,8 @@ pub struct RpcRequest<T: RpcMethod> {
     pub params: T::Params,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, thiserror::Error, serde::Serialize, serde::Deserialize)]
+#[error("bitcoin RPC failed with code {code}, message: {message}")]
 pub struct RpcError {
     pub code: i64,
     pub message: String,
@@ -143,11 +144,6 @@ impl From<serde_json::Error> for RpcError {
             message: format!("{}", e),
             status: None,
         }
-    }
-}
-impl From<RpcError> for Error {
-    fn from(e: RpcError) -> Self {
-        anyhow!("{}", e.message)
     }
 }
 
@@ -195,13 +191,16 @@ pub struct RpcClient {
     authorization: AuthSource,
     uri: Uri,
     client: HttpClient,
+    logger: slog::Logger,
 }
 impl RpcClient {
-    pub fn new(auth: AuthSource, uri: Uri) -> Self {
+    pub fn new(auth: AuthSource, uri: Uri, logger: &slog::Logger) -> Self {
+        let uri_string = uri.to_string();
         RpcClient {
             authorization: auth, // DO NOT try to eager evaluate this, it can change while the program is running
             uri,
             client: HttpClient::new(),
+            logger: logger.new(o!("uri" => uri_string)),
         }
     }
     pub async fn send<
@@ -264,12 +263,26 @@ impl RpcClient {
                         forwarded_recv.collect::<Vec<_>>().await.into_iter().unzip();
                     let mut parts = client.uri.clone().into_parts();
                     parts.path_and_query = Some(path.parse().map_err(Error::from)?);
+                    let authorization = match client.authorization.try_load().await {
+                        Ok(authorization) => authorization,
+                        Err(error) => {
+                            error!(client.logger, "Failed to load authorization"; "error" => #error);
+                            // We need to explicitly turn this error into internal server error to
+                            // not leak information
+                            return Err(RpcError {
+                                code: MISC_ERROR_CODE,
+                                message: "internal server error".to_owned(),
+                                status: Some(StatusCode::INTERNAL_SERVER_ERROR),
+                            });
+                        },
+                    };
+
                     let response = client
                         .client
                         .request(
                             Request::builder()
                                 .method(Method::POST)
-                                .header(AUTHORIZATION, client.authorization.try_load().await?)
+                                .header(AUTHORIZATION, authorization)
                                 .uri(Uri::from_parts(parts).map_err(Error::from)?)
                                 .body(serde_json::to_string(&new_batch)?.into())
                                 .map_err(Error::from)?,
@@ -306,7 +319,7 @@ impl RpcClient {
     pub async fn call<T: RpcMethod + Serialize>(
         &self,
         req: &RpcRequest<T>,
-    ) -> Result<RpcResponse<T>, Error> {
+    ) -> Result<RpcResponse<T>, ClientError> {
         let response = self
             .client
             .request(
@@ -321,15 +334,42 @@ impl RpcClient {
         let body: Bytes =
             tokio::stream::StreamExt::collect::<Result<Bytes, _>>(response.into_body()).await?;
         let mut rpc_response: RpcResponse<T> = serde_json::from_slice(&body)
-            .with_context(|| format!("calling {}", req.method.as_str()))
-            .with_context(|| match std::str::from_utf8(&body) {
-                Ok(s) => format!("Response: {}: {}", status, s),
-                Err(e) => format!("Response: {}: Could not parse body: {}", status, e),
+            .map_err(|serde_error| {
+                match std::str::from_utf8(&body) {
+                    Ok(body) => ClientError::ParseResponseUtf8 { method: req.method.as_str().to_owned(), status: status, body: body.to_owned(), serde_error },
+                    Err(error) => ClientError::ResponseNotUtf8 { method: req.method.as_str().to_owned(), status: status, utf8_error: error, },
+                }
             })?;
         if let Some(ref mut error) = rpc_response.error {
             error.status = Some(status);
         }
         Ok(rpc_response)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ClientError {
+    #[error("serialization failed")]
+    Serde(#[from] serde_json::Error),
+    #[error("failed to load authentication data")]
+    LoadAuth(#[from] AuthLoadError),
+    #[error("hyper failed to process HTTP request")]
+    Hyper(#[from] hyper::error::Error),
+    #[error("invalid HTTP request")]
+    Http(#[from] http::Error),
+    #[error("HTTP response (status: {status}) to method {method} can't be parsed as json, body: {body}")]
+    ParseResponseUtf8 { method: String, status: http::status::StatusCode, body: String, #[source] serde_error: serde_json::Error },
+    #[error("HTTP response (status: {status}) to method {method} is not UTF-8")]
+    ResponseNotUtf8 { method: String, status: http::status::StatusCode, utf8_error: std::str::Utf8Error, },
+}
+
+impl From<ClientError> for RpcError {
+    fn from(error: ClientError) -> Self {
+        RpcError {
+            code: MISC_ERROR_CODE,
+            message: error.to_string(),
+            status: None,
+        }
     }
 }
 
@@ -375,16 +415,17 @@ impl AuthSource {
         }
     }
 
-    async fn load_from_file(path: &PathBuf) -> Result<String, Error> {
-        Ok(tokio::fs::read_to_string(path).await.map(|mut cookie| {
+    async fn load_from_file(path: &PathBuf) -> Result<String, AuthLoadError> {
+        tokio::fs::read_to_string(path).await.map(|mut cookie| {
             if cookie.ends_with('\n') {
                 cookie.pop();
             }
             base64::encode(cookie)
-        })?)
+        })
+        .map_err(|error| AuthLoadError::Read { path: path.to_owned(), error, })
     }
 
-    pub async fn try_load(&self) -> Result<HeaderValue, Error> {
+    pub async fn try_load(&self) -> Result<HeaderValue, AuthLoadError> {
         match self {
             AuthSource::Const { ref header, .. } => Ok(header.clone()),
             AuthSource::CookieFile {
@@ -392,7 +433,11 @@ impl AuthSource {
                 ref cached,
             } => {
                 let cache = cached.read().await.clone();
-                let modified = tokio::fs::metadata(&path).await?.modified()?;
+                let modified = tokio::fs::metadata(&path)
+                    .await
+                    .map_err(|error| AuthLoadError::Metadata { path: path.to_owned(), error, })?
+                    .modified()
+                    .map_err(|error| AuthLoadError::Modified { path: path.to_owned(), error, })?;
                 match cache {
                     Some(cache) if modified == cache.0 => Ok(cache.1.clone()),
                     _ => {
@@ -406,4 +451,16 @@ impl AuthSource {
             }
         }
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AuthLoadError {
+    #[error("failed to get metadata of file {path}")]
+    Metadata { path: PathBuf, #[source] error: std::io::Error, },
+    #[error("failed to get modification time of file {path}")]
+    Modified { path: PathBuf, #[source] error: std::io::Error, },
+    #[error("failed to read file {path}")]
+    Read { path: PathBuf, #[source] error: std::io::Error, },
+    #[error("invalid header value")]
+    HeaderValue(#[from] http::header::InvalidHeaderValue),
 }

@@ -1,4 +1,3 @@
-use anyhow::{anyhow, Error};
 use bitcoin::{
     consensus::Decodable,
     hash_types::BlockHash,
@@ -186,30 +185,31 @@ pub struct PeerInfo {
     /// The total bytes received aggregated by message type
     pub bytesrecv_per_msg: LinearMap<String, u64>,
 }
+
 impl PeerInfo {
-    pub fn into_address(self) -> Result<Address, Error> {
-        let services = ServiceFlags::consensus_decode(&mut std::io::Cursor::new(hex::decode(
-            &self.services,
-        )?))?;
+    pub fn into_address(self) -> Result<Address, PeerAddressError> {
+        let decoded_services = hex::decode(&self.services)
+            .map_err(|error| PeerAddressError::InvalidHex { string: self.services.clone(), error, })?;
+        let services = ServiceFlags::consensus_decode(&mut std::io::Cursor::new(decoded_services))
+            .map_err(|error| PeerAddressError::ConsensusDecode { string: self.services.clone(), error, })?;
         if let Ok(sock_addr) = self.addr.parse() {
             Ok(Address::new(&sock_addr, services))
         } else {
             let mut addr_split = self.addr.split(":");
             let host = addr_split
                 .next()
-                .ok_or_else(|| anyhow!("Invalid Peer Address: {}", self.addr))?;
+                .expect("std::str::split() is an empty iterator which should never happen");
             let port = addr_split
                 .next()
-                .ok_or_else(|| anyhow!("Invalid Peer Address: {}", self.addr))?
-                .parse()?;
-            let onion = base32::decode(
-                base32::Alphabet::RFC4648 { padding: false },
-                host.strip_suffix(".onion")
-                    .ok_or_else(|| anyhow!("Invalid Peer Address: {}", self.addr))?,
-            )
-            .ok_or_else(|| anyhow!("Invalid Peer Address: {}", self.addr))?;
+                .ok_or_else(|| PeerAddressError::MissingPort(self.addr.clone()))?
+                .parse()
+                .map_err(|error| PeerAddressError::InvalidPort { address: self.addr.clone(), error, })?;
+            let onion_key = host.strip_suffix(".onion")
+                    .ok_or_else(|| PeerAddressError::Unknown(self.addr.clone()))?;
+            let onion = base32::decode(base32::Alphabet::RFC4648 { padding: false }, onion_key)
+                .ok_or_else(|| PeerAddressError::InvalidOnionEncoding(self.addr.clone()))?;
             if onion.len() < 10 {
-                return Err(anyhow!("Invalid Peer Address: {}", self.addr));
+                return Err(PeerAddressError::InvalidOnionLength(self.addr.clone()));
             }
             let address: [u16; 8] = [
                 0xFD87,
@@ -229,6 +229,25 @@ impl PeerInfo {
         }
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum PeerAddressError {
+    #[error("invalid hexadecimal encoding of {string}")]
+    InvalidHex { string: String, #[source] error: hex::FromHexError, },
+    #[error("can't consensus-decode {string}")]
+    ConsensusDecode { string: String, #[source] error: bitcoin::consensus::encode::Error, },
+    #[error("missing port in peer address {0}")]
+    MissingPort(String),
+    #[error("invalid port in address {address}")]
+    InvalidPort { address: String, #[source] error: std::num::ParseIntError, },
+    #[error("the peer address {0} is neither clearnet address nor onion address")]
+    Unknown(String),
+    #[error("base32 encoding of onion address {0} is invalid")]
+    InvalidOnionEncoding(String),
+    #[error("invalid length of onion address {0}")]
+    InvalidOnionLength(String),
+}
+
 impl RpcMethod for GetPeerInfo {
     type Params = [(); 0];
     type Response = Vec<PeerInfo>;

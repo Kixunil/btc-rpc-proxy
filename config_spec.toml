@@ -92,3 +92,9 @@ doc = "Use tor for non-.onion peer connections"
 [[switch]]
 name = "default_fetch_blocks"
 doc = "Fetch blocks from peers for all users that do NOT specify fetch_blocks = false"
+
+[[switch]]
+name = "verbose"
+abbr = "v"
+doc = "Increase logging verbosity"
+count = true
