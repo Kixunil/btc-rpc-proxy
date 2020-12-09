@@ -198,7 +198,7 @@ impl PeerInfo {
             let mut addr_split = self.addr.split(":");
             let host = addr_split
                 .next()
-                .expect("std::str::split() is an empty iterator which should never happen");
+                .expect("error: entered unreachable code: std::str::split() is an empty iterator which should never happen");
             let port = addr_split
                 .next()
                 .ok_or_else(|| PeerAddressError::MissingPort(self.addr.clone()))?
