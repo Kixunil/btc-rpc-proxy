@@ -40,33 +40,31 @@ pub async fn proxy_request(
                                 let state_local_err = state_local.clone();
                                 user.intercept(state_local.clone(), req)
                                     .map_ok(move |res| {
-                                        if res.is_some() {
-                                            debug!(
-                                                state_local_ok.logger,
-                                                "{} called {}: INTERCEPTED",
-                                                name_local_ok,
-                                                req.method.0
-                                            )
+                                        let action_description = if res.is_some() {
+                                            "INTERCEPTED"
                                         } else {
-                                            debug!(
-                                                state_local_ok.logger,
-                                                "{} called {}: FORWARDED",
-                                                name_local_ok,
-                                                req.method.0
-                                            )
-                                        }
+                                            "FORWARDED"
+                                        };
+
+                                        debug!(
+                                            state_local_ok.logger,
+                                            "processed request";
+                                            "user" => name_local_ok,
+                                            "method" => req.method.0.clone(),
+                                            "action" => action_description
+                                        );
                                         res
                                     })
-                                    .map_err(move |err| {
+                                    .map_err(move |error| {
                                         warn!(
                                             state_local_err.logger,
-                                            "{} called {}: ERROR {} {}",
-                                            name_local_err,
-                                            req.method.0,
-                                            err.code,
-                                            err.message
+                                            "failed request";
+                                            "user" => name_local_err,
+                                            "method" => req.method.0.clone(),
+                                            "error_code" => error.code,
+                                            "error_message" => &error.message
                                         );
-                                        err
+                                        error
                                     })
                             })
                             .await?;

@@ -41,7 +41,7 @@ impl State {
             tokio::task::spawn(async move {
                 match Peers::updated(&self.rpc_client).await {
                     Ok(peers) => *self.peers.write().await = Arc::new(peers),
-                    Err(e) => error!(self.logger, "{}", e.context("updating peer list")),
+                    Err(error) => error!(self.logger, "failed to update peers"; "error" => #error),
                 }
             });
         }

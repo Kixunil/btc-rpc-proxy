@@ -20,6 +20,7 @@ path = "src/main.rs"
 spec = "config_spec.toml"
 
 [features]
+default = ["debug_logs"]
 old_rust = []
 debug_logs = ["slog/max_level_debug"]
 
@@ -42,11 +43,12 @@ linear-map = { version = "1.2.0", features = ["serde_impl"] }
 rand = "0.7.3"
 serde = { version = "1.0.117", features = ["derive"] }
 serde_json = "1.0.59"
-slog = "2.5.2"
+slog = "2.7.0"
 slog-async = "2.5.0"
 slog-term = "2.6.0"
 socks = "0.3.3"
 tokio = { version = "0.2.22", features = ["full"] }
+thiserror = "1.0.22"
 
 [build-dependencies]
 configure_me_codegen = "0.3.14"
