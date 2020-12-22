@@ -27,7 +27,7 @@ doc = "The file in which bitcoind stores authentication cookie. Can be used inst
 [[param]]
 name = "bind_address"
 type = "::std::net::IpAddr"
-default = "[127, 0, 0, 1].into()"
+optional = true
 doc = "The address used for listening."
 #debconf_priority = "low"
 #debconf_default = "127.0.0.1"
@@ -35,10 +35,16 @@ doc = "The address used for listening."
 [[param]]
 name = "bind_port"
 type = "u16"
-default = "8331"
+optional = true
 doc = "The port used for listening."
 #debconf_priority = "low"
 #debconf_default = "8331"
+
+[[param]]
+name = "bind_systemd_socket_name"
+type = "String"
+optional = true
+doc = "The systemd socket name used for listening - conflicts with bind_address and bind_port"
 
 [[param]]
 name = "bitcoind_address"

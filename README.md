@@ -30,6 +30,17 @@ An example configuration file is provided in this repository, hopefuly it's unde
 
 A man page is also generated during build and `--help` option is provided.
 
+### Systemd integration
+
+Using socket activation enables you to delay the start of `btc-rpc-proxy` until it's actually needed or start it in parallel with its clients leading to faster boot times.
+
+Systemd socket activation is configured using `bind_systemd_socket_name` option.
+Setting it to a valid socket name will cause `btc-rpc-proxy` to use systemd socket activation using the socket with the specified socket name.
+
+This feature is only available for Linux and only if the `systemd` feature is enabled. (Enabled by default.)
+Disabling it can decrease compile time and binary size but please keep it enabled if you intend to distribute the binary so that the users can benefit from it.
+Especially in case of packaged software.
+
 ## Limitations
 
 * It uses `serde_json`, which allocates during deserialization (`Value`). Expect a bit lower performance than without proxy.

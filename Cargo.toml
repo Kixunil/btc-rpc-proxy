@@ -20,9 +20,10 @@ path = "src/main.rs"
 spec = "config_spec.toml"
 
 [features]
-default = ["debug_logs"]
+default = ["debug_logs", "systemd"]
 old_rust = []
 debug_logs = ["slog/max_level_debug"]
+systemd = ["systemd_socket/enable_systemd"]
 
 [dependencies]
 anyhow = "1.0.34"
@@ -49,6 +50,7 @@ slog-term = "2.6.0"
 socks = "0.3.3"
 tokio = { version = "0.2.22", features = ["full"] }
 thiserror = "1.0.22"
+systemd_socket = { version = "0.1.1", default-features = false, features = ["tokio_0_2"] }
 
 [build-dependencies]
 configure_me_codegen = "0.3.14"
