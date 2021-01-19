@@ -18,7 +18,7 @@ use anyhow::Error;
 use futures::FutureExt;
 use hyper::{
     service::{make_service_fn, service_fn},
-    Server,
+    server::Server,
 };
 
 pub use crate::client::{AuthSource, RpcClient};
