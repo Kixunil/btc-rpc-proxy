@@ -10,7 +10,6 @@ use bitcoin::{
     consensus::{Decodable, Encodable},
     hash_types::BlockHash,
     network::{
-        address::Address,
         constants::{Network::Bitcoin, ServiceFlags},
         message::{NetworkMessage, RawNetworkMessage},
         message_blockdata::Inventory,
@@ -21,18 +20,20 @@ use bitcoin::{
 use futures::FutureExt;
 use socks::Socks5Stream;
 
-use crate::client::{RpcClient, RpcError, ClientError, RpcRequest, MISC_ERROR_CODE, PRUNE_ERROR_MESSAGE};
+use crate::client::{
+    ClientError, RpcClient, RpcError, RpcRequest, MISC_ERROR_CODE, PRUNE_ERROR_MESSAGE,
+};
 use crate::rpc_methods::{GetBlock, GetBlockParams, GetPeerInfo, PeerAddressError};
 use crate::state::{State, TorState};
 
-type VersionMessageProducer = Box<dyn Fn(Address) -> RawNetworkMessage + Send + Sync>;
+type VersionMessageProducer = Box<dyn Fn() -> RawNetworkMessage + Send + Sync>;
 
 lazy_static::lazy_static! {
     static ref VER_ACK: RawNetworkMessage = RawNetworkMessage {
         magic: Bitcoin.magic(),
         payload: NetworkMessage::Verack,
     };
-    static ref VERSION_MESSAGE: VersionMessageProducer = Box::new(|addr| {
+    static ref VERSION_MESSAGE: VersionMessageProducer = Box::new(|| {
         use std::time::SystemTime;
         RawNetworkMessage {
             magic: Bitcoin.magic(),
@@ -42,9 +43,8 @@ lazy_static::lazy_static! {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap()
                     .as_secs() as i64,
-                addr,
-                Address::new(&([127, 0, 0, 1], 8332).into(), ServiceFlags::NONE),
-                // This is OK because RPC proxy doesn't listen on P2P
+                bitcoin::network::Address::new(&([127, 0, 0, 1], 8332).into(), ServiceFlags::NONE),
+                bitcoin::network::Address::new(&([127, 0, 0, 1], 8332).into(), ServiceFlags::NONE),
                 0,
                 format!("BTC RPC Proxy v{}", env!("CARGO_PKG_VERSION")),
                 0,
@@ -83,8 +83,8 @@ impl Peers {
                 .into_iter()
                 .filter(|p| !p.inbound)
                 .filter(|p| p.servicesnames.contains("NETWORK"))
-                .map(|p| p.into_address().map(Peer::new))
-                .collect::<Result<_, _>>()?,
+                .map(|p| Peer::new(Arc::new(p.addr)))
+                .collect(),
             fetched: Some(Instant::now()),
         })
     }
@@ -148,40 +148,19 @@ impl Write for BitcoinPeerConnection {
     }
 }
 impl BitcoinPeerConnection {
-    pub async fn connect(state: Arc<State>, addr: Address) -> Result<Self, Error> {
+    pub async fn connect(state: Arc<State>, addr: Arc<String>) -> Result<Self, Error> {
         tokio::time::timeout(
             state.peer_timeout,
             tokio::task::spawn_blocking(move || {
-                let mut stream = match (addr.socket_addr(), &state.tor) {
-                    (Ok(addr), Some(TorState { only: false, .. })) | (Ok(addr), None) => {
-                        BitcoinPeerConnection::ClearNet(TcpStream::connect(addr)?)
+                let mut stream = match &state.tor {
+                    Some(TorState { only, proxy })
+                        if *only || addr.split(":").next().unwrap().ends_with(".onion") =>
+                    {
+                        BitcoinPeerConnection::Tor(Socks5Stream::connect(proxy, &**addr)?)
                     }
-                    (Ok(addr), Some(tor)) => {
-                        BitcoinPeerConnection::Tor(Socks5Stream::connect(tor.proxy, addr)?)
-                    }
-                    (Err(_), Some(tor)) => BitcoinPeerConnection::Tor(Socks5Stream::connect(
-                        tor.proxy,
-                        (
-                            format!(
-                                "{}.onion",
-                                base32::encode(
-                                    base32::Alphabet::RFC4648 { padding: false },
-                                    &addr
-                                        .address
-                                        .iter()
-                                        .map(|n| *n)
-                                        .flat_map(|n| u16::to_be_bytes(n).to_vec())
-                                        .collect::<Vec<_>>()
-                                )
-                                .to_lowercase()
-                            )
-                            .as_str(),
-                            addr.port,
-                        ),
-                    )?),
-                    (Err(e), None) => return Err(e.into()),
+                    _ => BitcoinPeerConnection::ClearNet(TcpStream::connect(&*addr)?),
                 };
-                VERSION_MESSAGE(addr).consensus_encode(&mut stream)?;
+                VERSION_MESSAGE().consensus_encode(&mut stream)?;
                 stream.flush()?;
                 let _ =
                     bitcoin::network::message::RawNetworkMessage::consensus_decode(&mut stream)?; // version
@@ -198,12 +177,12 @@ impl BitcoinPeerConnection {
 }
 
 pub struct Peer {
-    addr: Address,
+    addr: Arc<String>,
     send: mpmc::Sender<BitcoinPeerConnection>,
     recv: mpmc::Receiver<BitcoinPeerConnection>,
 }
 impl Peer {
-    pub fn new(addr: Address) -> Self {
+    pub fn new(addr: Arc<String>) -> Self {
         let (send, recv) = mpmc::bounded(1);
         Peer { addr, send, recv }
     }
@@ -222,7 +201,7 @@ impl std::fmt::Debug for Peer {
 }
 
 pub struct PeerHandle {
-    addr: Address,
+    addr: Arc<String>,
     conn: Option<BitcoinPeerConnection>,
     send: mpmc::Sender<BitcoinPeerConnection>,
 }
