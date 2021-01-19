@@ -1,9 +1,4 @@
-use bitcoin::{
-    consensus::Decodable,
-    hash_types::BlockHash,
-    network::{constants::ServiceFlags, Address},
-    util::amount::Amount,
-};
+use bitcoin::hash_types::BlockHash;
 use linear_map::{set::LinearSet, LinearMap};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -133,113 +128,44 @@ pub struct PeerInfo {
     pub services: String,
     /// The services offered
     pub servicesnames: LinearSet<String>,
-    /// Whether peer has asked us to relay transactions to it
-    pub relaytxes: bool,
-    /// The time in seconds since epoch (Jan 1 1970 GMT) of the last send
-    pub lastsend: u64,
-    /// The time in seconds since epoch (Jan 1 1970 GMT) of the last receive
-    pub lastrecv: u64,
-    /// The total bytes sent
-    pub bytessent: u64,
-    /// The total bytes received
-    pub bytesrecv: u64,
-    /// The connection time in seconds since epoch (Jan 1 1970 GMT)
-    pub conntime: u64,
-    /// The time offset in seconds
-    pub timeoffset: i64,
-    /// ping time (if available)
-    pub pingtime: Option<f64>,
-    /// minimum observed ping time (if any at all)
-    pub minping: Option<f64>,
-    /// ping wait (if non-zero)
-    pub pingwait: Option<f64>,
     /// The peer version, such as 70001
     pub version: u64,
     /// The string version
     pub subver: String,
     /// Inbound (true) or Outbound (false)
     pub inbound: bool,
-    /// Whether connection was due to `addnode`/`-connect` or if it was an
-    /// automatic/inbound connection
-    pub addnode: bool,
     /// The starting height (block) of the peer
     pub startingheight: i64,
-    /// The ban score
-    pub banscore: i64,
     /// The last header we have in common with this peer
     pub synced_headers: i64,
     /// The last block we have in common with this peer
     pub synced_blocks: i64,
     /// The heights of blocks we're currently asking from this peer
     pub inflight: Vec<u64>,
-    /// Whether the peer is whitelisted
-    pub whitelisted: bool,
-    #[serde(
-        rename = "minfeefilter",
-        default,
-        with = "bitcoin::util::amount::serde::as_btc::opt"
-    )]
-    pub min_fee_filter: Option<Amount>,
-    /// The total bytes sent aggregated by message type
-    pub bytessent_per_msg: LinearMap<String, u64>,
-    /// The total bytes received aggregated by message type
-    pub bytesrecv_per_msg: LinearMap<String, u64>,
-}
-
-impl PeerInfo {
-    pub fn into_address(self) -> Result<Address, PeerAddressError> {
-        let decoded_services = hex::decode(&self.services)
-            .map_err(|error| PeerAddressError::InvalidHex { string: self.services.clone(), error, })?;
-        let services = ServiceFlags::consensus_decode(&mut std::io::Cursor::new(decoded_services))
-            .map_err(|error| PeerAddressError::ConsensusDecode { string: self.services.clone(), error, })?;
-        if let Ok(sock_addr) = self.addr.parse() {
-            Ok(Address::new(&sock_addr, services))
-        } else {
-            let mut addr_split = self.addr.split(":");
-            let host = addr_split
-                .next()
-                .expect("error: entered unreachable code: std::str::split() is an empty iterator which should never happen");
-            let port = addr_split
-                .next()
-                .ok_or_else(|| PeerAddressError::MissingPort(self.addr.clone()))?
-                .parse()
-                .map_err(|error| PeerAddressError::InvalidPort { address: self.addr.clone(), error, })?;
-            let onion_key = host.strip_suffix(".onion")
-                    .ok_or_else(|| PeerAddressError::Unknown(self.addr.clone()))?;
-            let onion = base32::decode(base32::Alphabet::RFC4648 { padding: false }, onion_key)
-                .ok_or_else(|| PeerAddressError::InvalidOnionEncoding(self.addr.clone()))?;
-            if onion.len() < 10 {
-                return Err(PeerAddressError::InvalidOnionLength(self.addr.clone()));
-            }
-            let address: [u16; 8] = [
-                0xFD87,
-                0xD87E,
-                0xEB43,
-                ((onion[0] as u16) << 8) + (onion[1] as u16),
-                ((onion[2] as u16) << 8) + (onion[3] as u16),
-                ((onion[4] as u16) << 8) + (onion[5] as u16),
-                ((onion[6] as u16) << 8) + (onion[7] as u16),
-                ((onion[8] as u16) << 8) + (onion[9] as u16),
-            ];
-            Ok(Address {
-                services,
-                address,
-                port,
-            })
-        }
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum PeerAddressError {
     #[error("invalid hexadecimal encoding of {string}")]
-    InvalidHex { string: String, #[source] error: hex::FromHexError, },
+    InvalidHex {
+        string: String,
+        #[source]
+        error: hex::FromHexError,
+    },
     #[error("can't consensus-decode {string}")]
-    ConsensusDecode { string: String, #[source] error: bitcoin::consensus::encode::Error, },
+    ConsensusDecode {
+        string: String,
+        #[source]
+        error: bitcoin::consensus::encode::Error,
+    },
     #[error("missing port in peer address {0}")]
     MissingPort(String),
     #[error("invalid port in address {address}")]
-    InvalidPort { address: String, #[source] error: std::num::ParseIntError, },
+    InvalidPort {
+        address: String,
+        #[source]
+        error: std::num::ParseIntError,
+    },
     #[error("the peer address {0} is neither clearnet address nor onion address")]
     Unknown(String),
     #[error("base32 encoding of onion address {0} is invalid")]
