@@ -70,6 +70,9 @@ impl Peers {
             .map(|f| f.elapsed() > max_peer_age)
             .unwrap_or(true)
     }
+    pub fn is_empty(&self) -> bool {
+        self.peers.is_empty()
+    }
     pub async fn updated(client: &RpcClient) -> Result<Self, PeerUpdateError> {
         Ok(Self {
             peers: client
