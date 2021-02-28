@@ -18,7 +18,6 @@ pub struct TorState {
 
 #[derive(Debug)]
 pub struct State {
-    pub bind: SocketAddr,
     pub rpc_client: RpcClient,
     pub tor: Option<TorState>,
     pub users: Users,

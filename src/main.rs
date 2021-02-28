@@ -11,6 +11,6 @@ mod create_state;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let state = create_state::create_state()?.arc();
-    btc_rpc_proxy::main(state).await
+    let (state, bind_addr) = create_state::create_state()?;
+    btc_rpc_proxy::main(state.arc(), bind_addr).await
 }

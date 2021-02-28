@@ -5,6 +5,7 @@ use anyhow::Error;
 use btc_rpc_proxy::{AuthSource, Peers, RpcClient, State, TorState};
 use slog::Drain;
 use tokio::sync::RwLock;
+use systemd_socket::SocketAddr;
 
 #[allow(dead_code)]
 #[allow(unused_mut)]
@@ -14,7 +15,7 @@ mod config {
 }
 use self::config::{Config, ResultExt};
 
-pub fn create_state() -> Result<State, Error> {
+pub fn create_state() -> Result<(State, SocketAddr), Error> {
     use slog::Level;
 
     let (config, _) =
@@ -59,8 +60,31 @@ pub fn create_state() -> Result<State, Error> {
         only: tor_only,
     });
 
-    Ok(State {
-        bind: (config.bind_address, config.bind_port).into(),
+    // not const/static because from() is not const
+    let default_bind_address = std::net::IpAddr::from([127, 0, 0, 1]);
+    // for consistency
+    let default_bind_port = 8331;
+
+    let bind_addr = match (config.bind_address, config.bind_port, config.bind_systemd_socket_name) {
+        (Some(addr), Some(port), None) => (addr, port).into(),
+        (None, Some(port), None) => (default_bind_address, port).into(),
+        (Some(addr), None, None) => (addr, default_bind_port).into(),
+        (None, None, None) => (default_bind_address, default_bind_port).into(),
+        (None, None, Some(socket_name)) => {
+            SocketAddr::from_systemd_name(socket_name)
+                .map_err(|error| {
+                    let new_error = anyhow::anyhow!("failed to parse systemd socket name: {}", error);
+                    slog::error!(logger, "failed to parse systemd socket name"; "error" => #error);
+                    new_error
+                })?
+        },
+        _ => {
+            slog::error!(logger, "bind_systemd_socket_name can NOT be specified when bind_address or bind_port is specified");
+            anyhow::bail!("bind_systemd_socket_name can NOT be specified when bind_address or bind_port is specified")
+        }
+    };
+
+    Ok((State {
         rpc_client,
         tor,
         users: btc_rpc_proxy::users::input::map_default(config.user, config.default_fetch_blocks),
@@ -69,5 +93,5 @@ pub fn create_state() -> Result<State, Error> {
         peers: RwLock::new(Arc::new(Peers::new())),
         max_peer_age: Duration::from_secs(config.max_peer_age),
         max_peer_concurrency: config.max_peer_concurrency,
-    })
+    }, bind_addr))
 }
