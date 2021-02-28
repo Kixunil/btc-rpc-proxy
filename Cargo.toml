@@ -32,7 +32,6 @@ base32 = "0.4.0"
 base64 = "0.13.0"
 bitcoin = { version = "0.25.2", features = ["use-serde"] }
 configure_me = { version = "0.4.0" }
-derive_more = "0.99.11"
 futures = "0.3.8"
 hex = "0.4.2"
 http = "0.2.1"

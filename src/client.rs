@@ -101,8 +101,9 @@ pub trait RpcMethod {
     fn as_str<'a>(&'a self) -> &'a str;
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, Deref)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct GenericRpcMethod(pub String);
+
 impl RpcMethod for GenericRpcMethod {
     type Params = Vec<Value>;
     type Response = Value;
@@ -110,6 +111,15 @@ impl RpcMethod for GenericRpcMethod {
         self.0.as_str()
     }
 }
+
+impl std::ops::Deref for GenericRpcMethod {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct RpcRequest<T: RpcMethod> {

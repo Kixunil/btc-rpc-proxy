@@ -4,8 +4,17 @@ use serde::{
     ser::{Serialize, Serializer},
 };
 
-#[derive(Debug, Deref, DerefMut, From, Into)]
+#[derive(Debug)]
 pub struct HexBytes(Bytes);
+
+impl std::ops::Deref for HexBytes {
+    type Target = Bytes;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 
 impl Serialize for HexBytes {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
