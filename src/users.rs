@@ -82,6 +82,15 @@ mod password {
         }
     }
 
+    impl TryFrom<&'_ str> for Password {
+        type Error = InvalidPasswordError;
+
+        fn try_from(string: &str) -> Result<Self, Self::Error> {
+            Password::validate_str(string)?;
+            Ok(Password(string.to_owned()))
+        }
+    }
+
     impl configure_me::parse_arg::ParseArg for Password {
         type Error = InvalidPasswordError;
 
@@ -299,11 +308,12 @@ impl User {
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet};
+    use std::convert::TryInto;
 
     fn check(input: Option<bool>, default: bool, expected: bool) {
         let mut users = HashMap::new();
         users.insert("satoshi".to_owned(), super::input::User {
-            password: "secret".to_owned(),
+            password: "secret".try_into().expect("failed to create password"),
             allowed_calls: HashSet::new(),
             fetch_blocks: input,
         });
