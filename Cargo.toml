@@ -31,9 +31,8 @@ async-channel = "1.5.1"
 base32 = "0.4.0"
 base64 = "0.13.0"
 bitcoin = { version = "0.25.2", features = ["use-serde"] }
-configure_me = { version = "0.3.4" }
+configure_me = { version = "0.4.0" }
 derive_more = "0.99.11"
-enum_future = "0.1"
 futures = "0.3.8"
 hex = "0.4.2"
 http = "0.2.1"
@@ -41,7 +40,7 @@ hyper = "0.13.9"
 itertools = "0.9.0"
 lazy_static = "1.4.0"
 linear-map = { version = "1.2.0", features = ["serde_impl"] }
-rand = "0.7.3"
+rand = "0.8.0"
 serde = { version = "1.0.117", features = ["derive"] }
 serde_json = "1.0.59"
 slog = "2.7.0"
@@ -53,7 +52,7 @@ thiserror = "1.0.22"
 systemd_socket = { version = "0.1.1", default-features = false, features = ["tokio_0_2"] }
 
 [build-dependencies]
-configure_me_codegen = "0.3.14"
+configure_me_codegen = "0.4.0"
 
 [package.metadata.deb]
 assets = [
