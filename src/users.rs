@@ -19,12 +19,14 @@ use crate::state::State;
 #[cfg(feature = "old_rust")]
 use crate::util::old_rust::StrCompat;
 
+pub use password::Password;
+
 pub mod input {
     use std::collections::{HashMap, HashSet};
 
     #[derive(Debug, serde::Deserialize)]
     pub struct User {
-        pub password: String,
+        pub password: super::Password,
         pub allowed_calls: HashSet<String>,
         #[serde(default)]
         pub fetch_blocks: Option<bool>,
@@ -43,6 +45,102 @@ pub mod input {
     pub fn map_default(users: HashMap<String, User>, default_fetch_blocks: bool) -> super::Users {
         super::Users(users.into_iter().map(|(name, user)| (name, user.map_default(default_fetch_blocks))).collect())
     }
+}
+
+mod password {
+    use std::fmt;
+    use std::convert::TryFrom;
+    use std::ffi::{OsStr, OsString};
+
+    #[derive(serde::Deserialize)]
+    #[serde(try_from = "String")]
+    pub struct Password(String);
+
+    impl Password {
+        fn validate_str(string: &str) -> Result<(), InvalidPasswordError> {
+            for (pos, byte) in string.bytes().enumerate() {
+                if byte <= 0x1F || byte >= 0x7F {
+                    return Err(InvalidPasswordError(InvalidPasswordErrorInner::BadChar { pos, byte, }))
+                }
+            }
+            Ok(())
+        }
+    }
+
+    impl fmt::Debug for Password {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("Password(secret)")
+        }
+    }
+
+    impl TryFrom<String> for Password {
+        type Error = InvalidPasswordError;
+
+        fn try_from(string: String) -> Result<Self, Self::Error> {
+            Password::validate_str(&string)?;
+            Ok(Password(string))
+        }
+    }
+
+    impl configure_me::parse_arg::ParseArg for Password {
+        type Error = InvalidPasswordError;
+
+        fn parse_arg(arg: &OsStr) -> Result<Self, Self::Error> {
+            let string = arg.to_str().ok_or(InvalidPasswordError(InvalidPasswordErrorInner::NonAscii))?;
+            Password::validate_str(string)?;
+            Ok(Password(string.to_owned()))
+        }
+
+        fn parse_owned_arg(arg: OsString) -> Result<Self, Self::Error> {
+            let string = arg.into_string().map_err(|_| InvalidPasswordError(InvalidPasswordErrorInner::NonAscii))?;
+            Password::validate_str(&string)?;
+            Ok(Password(string.to_owned()))
+        }
+
+        fn describe_type<W: fmt::Write>(mut writer: W) -> fmt::Result {
+            writer.write_str("an ASCII string with no control characters")
+        }
+    }
+
+    impl PartialEq<&'_ str> for Password {
+        fn eq(&self, other: &&str) -> bool {
+            // timing safe equality
+            #[inline(never)]
+            fn xor_contents(a: &[u8], b: &[u8]) -> usize {
+                a
+                    .iter()
+                    .enumerate()
+                    .map(|(i, byte)| *byte ^ b[i % b.len()])
+                    .fold(a.len() ^ b.len(), |acc, item| acc | usize::from(item))
+            }
+
+            if self.0.is_empty() {
+                return other.is_empty()
+            }
+
+            let bits = xor_contents(self.0.as_bytes(), other.as_bytes());
+            unsafe { std::ptr::read_volatile(&bits) == 0 }
+        }
+    }
+
+    impl PartialEq for Password {
+        fn eq(&self, other: &Password) -> bool {
+            *self == &*other.0
+        }
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    enum InvalidPasswordErrorInner {
+        #[error("invalid byte 0x{byte:02X} at position {pos}")]
+        BadChar { pos: usize, byte: u8, },
+        // non-utf-8 implies non-ascii
+        #[error("not an ascii string")]
+        NonAscii,
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error(transparent)]
+    pub struct InvalidPasswordError(InvalidPasswordErrorInner);
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -65,7 +163,7 @@ impl Users {
 
 #[derive(Debug, serde::Deserialize)]
 pub struct User {
-    pub password: String,
+    pub password: Password,
     pub allowed_calls: HashSet<String>,
     #[serde(default)]
     pub fetch_blocks: bool,
