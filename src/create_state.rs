@@ -48,8 +48,9 @@ pub fn create_state() -> Result<(State, SocketAddr), Error> {
     )
     .parse()
     .map_err(|error: http::uri::InvalidUri| {
-        let new_error = anyhow::anyhow!("failed to parse bitcoin URI: {}", error);
-        slog::error!(logger, "failed to parse bitcoin URI"; "error" => #error);
+        let msg = "failed to parse bitcoin URI";
+        let new_error = anyhow::anyhow!("{}: {}", msg, error);
+        slog::error!(logger, "{}", msg; "error" => #error);
         new_error
     })?;
     let rpc_client = RpcClient::new(auth, bitcoin_uri, &logger);
@@ -73,14 +74,16 @@ pub fn create_state() -> Result<(State, SocketAddr), Error> {
         (None, None, Some(socket_name)) => {
             SocketAddr::from_systemd_name(socket_name)
                 .map_err(|error| {
-                    let new_error = anyhow::anyhow!("failed to parse systemd socket name: {}", error);
-                    slog::error!(logger, "failed to parse systemd socket name"; "error" => #error);
+                    let msg = "failed to parse systemd socket name";
+                    let new_error = anyhow::anyhow!("{}: {}", msg, error);
+                    slog::error!(logger, "{}", msg; "error" => #error);
                     new_error
                 })?
         },
         _ => {
-            slog::error!(logger, "bind_systemd_socket_name can NOT be specified when bind_address or bind_port is specified");
-            anyhow::bail!("bind_systemd_socket_name can NOT be specified when bind_address or bind_port is specified")
+            let msg = "bind_systemd_socket_name can NOT be specified when bind_address or bind_port is specified";
+            slog::error!(logger, "{}", msg);
+            anyhow::bail!("{}", msg)
         }
     };
 
