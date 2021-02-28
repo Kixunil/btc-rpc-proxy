@@ -44,7 +44,8 @@ lazy_static::lazy_static! {
                     .as_secs() as i64,
                 addr,
                 Address::new(&([127, 0, 0, 1], 8332).into(), ServiceFlags::NONE),
-                rand::random(),
+                // This is OK because RPC proxy doesn't listen on P2P
+                0,
                 format!("BTC RPC Proxy v{}", env!("CARGO_PKG_VERSION")),
                 0,
             )),
