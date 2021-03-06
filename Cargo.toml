@@ -37,7 +37,7 @@ enum_future = "0.1"
 futures = "0.3.12"
 hex = "0.4.2"
 http = "0.2.3"
-hyper = { version = "0.14.2", features = ["client", "server", "http2", "http1", "tcp"] }
+hyper = { version = "0.14.4", features = ["client", "server", "stream", "http2", "http1", "tcp"] }
 itertools = "0.10.0"
 lazy_static = "1.4.0"
 linear-map = { version = "1.2.0", features = ["serde_impl"] }
@@ -48,6 +48,8 @@ slog-async = "2.6.0"
 slog-term = "2.6.0"
 socks = "0.3.3"
 tokio = { version = "1.0.2", features = ["full"] }
+tokio-compat-02 = "0.2"
+tokio_02 = { version = "0.2.22", package = "tokio", features = ["stream"] }
 thiserror = "1.0.22"
 systemd_socket = { version = "0.1.1", default-features = false, features = ["tokio_0_2"] }
 
