@@ -29,6 +29,13 @@ pub use crate::state::{State, TorState};
 pub use crate::users::{User, Users};
 
 pub async fn main(state: Arc<State>, bind_addr: systemd_socket::SocketAddr) -> Result<(), Error> {
+    compat_main(state, bind_addr).compat().await
+}
+
+pub async fn compat_main(
+    state: Arc<State>,
+    bind_addr: systemd_socket::SocketAddr,
+) -> Result<(), Error> {
     let state_local = state.clone();
     let make_service = make_service_fn(move |_conn| {
         let state_local_local = state_local.clone();
@@ -39,7 +46,7 @@ pub async fn main(state: Arc<State>, bind_addr: systemd_socket::SocketAddr) -> R
         }
     });
 
-    let listener = bind_addr.bind_tokio_0_2().compat().await.map_err(|error| {
+    let listener = bind_addr.bind_tokio_0_2().await.map_err(|error| {
         let new_error = anyhow::anyhow!("failed to create the listening socket: {}", error);
         error!(state.logger, "failed to create the listening socket"; "error" => #error);
         new_error
