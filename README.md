@@ -24,11 +24,11 @@ A tradeoff to the proxy is speed and bandwidth. Every time the proxy needs to fe
 
 For security and performance reasons this application is written in Rust. Thus, you need a recent Rust compiler to compile it.
 
-You need to configure the proxy using config files. The application looks for files `/etc/bitcoin/rpc_proxy.toml` and `./btc_rpc_proxy.toml` and loads configuration from them, if present. **Make sure to set their permissions to `600` before you write the passwords to them!**
+You need to configure the proxy using config files. You can specify their paths using `--conf /path/to/file.toml` or `--conf-dir /path/to/config/dir`. **Make sure to set their permissions to `600` before you write the passwords to them!** If `--conf-dir` is used, all files in that directory will be loaded and merged. You can use `--conf` multiple times. This is useful to organize your configuration (e.g. put sensitive information into a separate file).
 
-An example configuration file is provided in this repository, hopefuly it's understandable. After configuring, you only need to run the compiled binary (e.g. using `cargo run --release`)
+An example configuration file is provided in this repository, hopefuly it's understandable. After configuring, you only need to run the compiled binary (e.g. using `cargo run --release -- --conf btc_rpc_proxy.toml`)
 
-A man page is also generated during build and `--help` option is provided.
+A man page can be generated using [`cfg_me`](https://crates.io/crates/cfg_me) and `--help` option is provided.
 
 ### Systemd integration
 
