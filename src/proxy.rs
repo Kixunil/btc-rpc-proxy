@@ -2,11 +2,10 @@ use std::sync::Arc;
 
 use anyhow::Error;
 use hyper::{
-    body::Bytes,
+    body::to_bytes,
     header::{AUTHORIZATION, WWW_AUTHENTICATE},
     Body, Method, Request, Response, StatusCode,
 };
-use tokio::stream::StreamExt;
 
 use crate::client::{RpcError, RpcResponse};
 use crate::state::State;
@@ -25,7 +24,7 @@ pub async fn proxy_request(
                 .get(AUTHORIZATION)
                 .and_then(|auth| state_local.users.get(auth))
             {
-                let body_data = body.collect::<Result<Bytes, _>>().await?;
+                let body_data = to_bytes(body).await?;
                 match serde_json::from_slice(body_data.as_ref()) {
                     Ok(req) => {
                         let state_local = state.clone();

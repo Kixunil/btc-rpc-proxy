@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use anyhow::{anyhow, Error};
 use futures::{channel::mpsc, StreamExt, TryStreamExt};
 use hyper::{
-    body::Bytes,
+    body::to_bytes,
     client::{Client, HttpConnector},
     header::{HeaderValue, AUTHORIZATION, CONTENT_LENGTH},
     Body, Method, Request, Response, StatusCode, Uri,
@@ -284,7 +284,7 @@ impl RpcClient {
                                 message: "internal server error".to_owned(),
                                 status: Some(StatusCode::INTERNAL_SERVER_ERROR),
                             });
-                        },
+                        }
                     };
 
                     let response = client
@@ -299,10 +299,7 @@ impl RpcClient {
                         )
                         .await
                         .map_err(Error::from)?;
-                    let body: Bytes =
-                        tokio::stream::StreamExt::collect::<Result<Bytes, _>>(response.into_body())
-                            .await
-                            .map_err(Error::from)?;
+                    let body = to_bytes(response.into_body()).await.map_err(Error::from)?;
                     let forwarded_res: Vec<RpcResponse<GenericRpcMethod>> =
                         serde_json::from_slice(body.as_ref())?;
                     Ok(idxs.into_iter().zip(forwarded_res).collect())
@@ -341,13 +338,21 @@ impl RpcClient {
             )
             .await?;
         let status = response.status();
-        let body: Bytes =
-            tokio::stream::StreamExt::collect::<Result<Bytes, _>>(response.into_body()).await?;
-        let mut rpc_response: RpcResponse<T> = serde_json::from_slice(&body)
-            .map_err(|serde_error| {
+        let body = to_bytes(response.into_body()).await?;
+        let mut rpc_response: RpcResponse<T> =
+            serde_json::from_slice(&body).map_err(|serde_error| {
                 match std::str::from_utf8(&body) {
-                    Ok(body) => ClientError::ParseResponseUtf8 { method: req.method.as_str().to_owned(), status: status, body: body.to_owned(), serde_error },
-                    Err(error) => ClientError::ResponseNotUtf8 { method: req.method.as_str().to_owned(), status: status, utf8_error: error, },
+                    Ok(body) => ClientError::ParseResponseUtf8 {
+                        method: req.method.as_str().to_owned(),
+                        status,
+                        body: body.to_owned(),
+                        serde_error,
+                    },
+                    Err(error) => ClientError::ResponseNotUtf8 {
+                        method: req.method.as_str().to_owned(),
+                        status,
+                        utf8_error: error,
+                    },
                 }
             })?;
         if let Some(ref mut error) = rpc_response.error {
@@ -364,13 +369,25 @@ pub enum ClientError {
     #[error("failed to load authentication data")]
     LoadAuth(#[from] AuthLoadError),
     #[error("hyper failed to process HTTP request")]
-    Hyper(#[from] hyper::error::Error),
+    Hyper(#[from] hyper::Error),
     #[error("invalid HTTP request")]
     Http(#[from] http::Error),
-    #[error("HTTP response (status: {status}) to method {method} can't be parsed as json, body: {body}")]
-    ParseResponseUtf8 { method: String, status: http::status::StatusCode, body: String, #[source] serde_error: serde_json::Error },
+    #[error(
+        "HTTP response (status: {status}) to method {method} can't be parsed as json, body: {body}"
+    )]
+    ParseResponseUtf8 {
+        method: String,
+        status: http::status::StatusCode,
+        body: String,
+        #[source]
+        serde_error: serde_json::Error,
+    },
     #[error("HTTP response (status: {status}) to method {method} is not UTF-8")]
-    ResponseNotUtf8 { method: String, status: http::status::StatusCode, utf8_error: std::str::Utf8Error, },
+    ResponseNotUtf8 {
+        method: String,
+        status: http::status::StatusCode,
+        utf8_error: std::str::Utf8Error,
+    },
 }
 
 impl From<ClientError> for RpcError {
@@ -426,13 +443,18 @@ impl AuthSource {
     }
 
     async fn load_from_file(path: &PathBuf) -> Result<String, AuthLoadError> {
-        tokio::fs::read_to_string(path).await.map(|mut cookie| {
-            if cookie.ends_with('\n') {
-                cookie.pop();
-            }
-            base64::encode(cookie)
-        })
-        .map_err(|error| AuthLoadError::Read { path: path.to_owned(), error, })
+        tokio::fs::read_to_string(path)
+            .await
+            .map(|mut cookie| {
+                if cookie.ends_with('\n') {
+                    cookie.pop();
+                }
+                base64::encode(cookie)
+            })
+            .map_err(|error| AuthLoadError::Read {
+                path: path.to_owned(),
+                error,
+            })
     }
 
     pub async fn try_load(&self) -> Result<HeaderValue, AuthLoadError> {
@@ -445,9 +467,15 @@ impl AuthSource {
                 let cache = cached.read().await.clone();
                 let modified = tokio::fs::metadata(&path)
                     .await
-                    .map_err(|error| AuthLoadError::Metadata { path: path.to_owned(), error, })?
+                    .map_err(|error| AuthLoadError::Metadata {
+                        path: path.to_owned(),
+                        error,
+                    })?
                     .modified()
-                    .map_err(|error| AuthLoadError::Modified { path: path.to_owned(), error, })?;
+                    .map_err(|error| AuthLoadError::Modified {
+                        path: path.to_owned(),
+                        error,
+                    })?;
                 match cache {
                     Some(cache) if modified == cache.0 => Ok(cache.1.clone()),
                     _ => {
@@ -466,11 +494,23 @@ impl AuthSource {
 #[derive(Debug, thiserror::Error)]
 pub enum AuthLoadError {
     #[error("failed to get metadata of file {path}")]
-    Metadata { path: PathBuf, #[source] error: std::io::Error, },
+    Metadata {
+        path: PathBuf,
+        #[source]
+        error: std::io::Error,
+    },
     #[error("failed to get modification time of file {path}")]
-    Modified { path: PathBuf, #[source] error: std::io::Error, },
+    Modified {
+        path: PathBuf,
+        #[source]
+        error: std::io::Error,
+    },
     #[error("failed to read file {path}")]
-    Read { path: PathBuf, #[source] error: std::io::Error, },
+    Read {
+        path: PathBuf,
+        #[source]
+        error: std::io::Error,
+    },
     #[error("invalid header value")]
     HeaderValue(#[from] http::header::InvalidHeaderValue),
 }
