@@ -45,7 +45,7 @@ slog = "2.7.0"
 slog-async = "2.5.0"
 slog-term = "2.6.0"
 socks = "0.3.3"
-tokio = { version = "0.2.22", features = ["full"] }
+tokio = { version = "1.16.1", features = ["full"] }
 thiserror = "1.0.22"
 systemd_socket = { version = "0.1.1", default-features = false, features = ["tokio_0_2"] }
 
