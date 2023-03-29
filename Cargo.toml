@@ -50,7 +50,7 @@ thiserror = "1.0.22"
 systemd_socket = { version = "0.1.1", default-features = false, features = ["tokio_0_2"] }
 
 [build-dependencies]
-configure_me_codegen = "0.4.0"
+configure_me_codegen = "0.4.3"
 
 [package.metadata.deb]
 assets = [

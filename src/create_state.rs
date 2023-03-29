@@ -7,9 +7,6 @@ use slog::Drain;
 use tokio::sync::RwLock;
 use systemd_socket::SocketAddr;
 
-#[allow(dead_code)]
-#[allow(unused_mut)]
-#[allow(unused_variables)]
 mod config {
     include!(concat!(env!("OUT_DIR"), "/configure_me_config.rs"));
 }
