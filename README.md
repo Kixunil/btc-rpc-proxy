@@ -4,13 +4,18 @@ Finer-grained permission management for bitcoind.
 
 ## About
 
-This is a proxy made specifically for `bitcoind` to allow finer-grained control of permissions. It enables you to specify several users and for each user the list of RPC calls they are allowed to make. When run against a prunded node, the proxy will perform on-demand block fetching and verification, enabling features of a non-pruned node while still using a pruned node.
+This is a proxy made specifically for `bitcoind` to allow finer-grained control of permissions. It enables you to specify several users and for each user the list of RPC calls they are allowed to make and optionally the name of the wallet they will operate on. When run against a prunded node, the proxy will perform on-demand block fetching and verification, enabling features of a non-pruned node while still using a pruned node.
 
 ### Fine-grained permission management
 
 This is useful because `bitcoind` allows every application with password to make possibly harmful calls like stopping the daemon or spending from wallet (if enabled). If you have several applications, you can provide the less trusted ones a different password and permissions than the others using this project.
 
 There's another interesting advantage: since this is written in Rust, it might serve as a filter for **some** malformed requests which might be exploits. But I don't recommend relying on it!
+
+### Overriding wallet
+
+For each user you can set a specific wallet name to be used by setting `override_wallet = "wallet_name_here"`.
+When this is set the wallet sent in request is ignored and the specified wallet is used instead. Aside from obvious security benefits this can help workaround applications that are incapable of accessing specific wallet (e.g. btc-rpc-explorer at the time of writing).
 
 ### On-demand block fetching
 

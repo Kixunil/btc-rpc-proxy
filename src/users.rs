@@ -30,14 +30,21 @@ pub mod input {
         pub allowed_calls: HashSet<String>,
         #[serde(default)]
         pub fetch_blocks: Option<bool>,
+        #[serde(default)]
+        pub override_wallet: Option<String>,
     }
 
     impl User {
         fn map_default(self, default_fetch_blocks: bool) -> super::User {
+            let wallet = self.override_wallet.map(|mut wallet| {
+                wallet.insert_str(0, "/wallet/");
+                wallet
+            });
             super::User {
                 password: self.password,
                 allowed_calls: self.allowed_calls,
                 fetch_blocks: self.fetch_blocks.unwrap_or(default_fetch_blocks),
+                override_wallet: wallet,
             }
         }
     }
@@ -176,6 +183,7 @@ pub struct User {
     pub allowed_calls: HashSet<String>,
     #[serde(default)]
     pub fetch_blocks: bool,
+    pub override_wallet: Option<String>,
 }
 impl User {
     pub async fn intercept<'a>(

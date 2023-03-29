@@ -30,9 +30,13 @@ pub async fn proxy_request(
                     Ok(req) => {
                         let state_local = state.clone();
                         let name_local = Arc::new(name);
+                        let path = user.override_wallet
+                            .as_ref()
+                            .map(AsRef::as_ref)
+                            .unwrap_or(parts.uri.path());
                         let response = state
                             .rpc_client
-                            .send(parts.uri.path(), &req, move |_path, req| {
+                            .send(path, &req, move |_path, req| {
                                 use futures::TryFutureExt;
                                 let name_local_ok = name_local.clone();
                                 let name_local_err = name_local.clone();

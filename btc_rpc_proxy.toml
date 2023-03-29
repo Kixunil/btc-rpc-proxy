@@ -4,6 +4,7 @@ bind_address = "127.0.0.1"
 
 [user.public]
 password = "public"
+# override_wallet = "some_wallet_name_here"
 allowed_calls = [
 	"getinfo",
 	"getblock",
