@@ -20,7 +20,6 @@ use hyper::{
     server::Server,
     service::{make_service_fn, service_fn},
 };
-use tokio_compat_02::FutureExt as _;
 
 pub use crate::client::{AuthSource, RpcClient};
 pub use crate::fetch_blocks::Peers;
@@ -29,13 +28,6 @@ pub use crate::state::{State, TorState};
 pub use crate::users::{User, Users};
 
 pub async fn main(state: Arc<State>, bind_addr: systemd_socket::SocketAddr) -> Result<(), Error> {
-    compat_main(state, bind_addr).compat().await
-}
-
-pub async fn compat_main(
-    state: Arc<State>,
-    bind_addr: systemd_socket::SocketAddr,
-) -> Result<(), Error> {
     let state_local = state.clone();
     let make_service = make_service_fn(move |_conn| {
         let state_local_local = state_local.clone();
@@ -46,30 +38,28 @@ pub async fn compat_main(
         }
     });
 
-    let listener = bind_addr.bind_tokio_0_2().await.map_err(|error| {
+    let listener = bind_addr.bind_tokio().await.map_err(|error| {
         let new_error = anyhow::anyhow!("failed to create the listening socket: {}", error);
         error!(state.logger, "failed to create the listening socket"; "error" => #error);
         new_error
     })?;
 
-    let server = Server::builder(hyper::server::accept::from_stream(TcpListenerCompat(
-        listener,
-    )))
-    .http1_only(true)
-    .serve(make_service);
+    let server = Server::builder(hyper::server::accept::from_stream(TcpListener(listener)))
+        .http1_only(true)
+        .serve(make_service);
 
     Ok(server.await?)
 }
 
-struct TcpListenerCompat(tokio_02::net::TcpListener);
-impl futures::Stream for TcpListenerCompat {
-    type Item = tokio_02::io::Result<tokio_compat_02::IoCompat<tokio_02::net::TcpStream>>;
+struct TcpListener(tokio::net::TcpListener);
+
+impl futures::Stream for TcpListener {
+    type Item = std::io::Result<tokio::net::TcpStream>;
 
     fn poll_next(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        tokio_02::stream::Stream::poll_next(unsafe { self.map_unchecked_mut(|s| &mut s.0) }, cx)
-            .map(|a| a.map(|a| a.map(tokio_compat_02::IoCompat::new)))
+        self.0.poll_accept(cx).map(|result| Some(result.map(|(conn, _addr)| conn)))
     }
 }

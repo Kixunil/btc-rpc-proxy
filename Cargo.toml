@@ -46,10 +46,8 @@ slog-async = "2.6.0"
 slog-term = "2.6.0"
 socks = "0.3.3"
 tokio = { version = "1.0.2", features = ["full"] }
-tokio-compat-02 = "0.2"
-tokio_02 = { version = "0.2.22", package = "tokio", features = ["stream"] }
 thiserror = "1.0.22"
-systemd_socket = { version = "0.1.1", default-features = false, features = ["tokio_0_2"] }
+systemd_socket = { version = "0.1.2", default-features = false, features = ["tokio"] }
 
 [build-dependencies]
 configure_me_codegen = "0.4.3"
