@@ -55,6 +55,7 @@ pub async fn compat_main(
     let server = Server::builder(hyper::server::accept::from_stream(TcpListenerCompat(
         listener,
     )))
+    .http1_only(true)
     .serve(make_service);
 
     Ok(server.await?)

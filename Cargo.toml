@@ -35,7 +35,7 @@ configure_me = { version = "0.4.0" }
 futures = "0.3.12"
 hex = "0.4.2"
 http = "0.2.3"
-hyper = { version = "0.14.4", features = ["client", "server", "stream", "http2", "http1", "tcp"] }
+hyper = { version = "0.14.4", features = ["client", "server", "stream", "http1", "tcp"] }
 itertools = "0.10.0"
 lazy_static = "1.4.0"
 linear-map = { version = "1.2.0", features = ["serde_impl"] }
