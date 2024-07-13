@@ -58,30 +58,6 @@ pub trait ApplyMut {
 }
 impl<T> ApplyMut for T {}
 
-#[cfg(feature = "old_rust")]
-pub mod old_rust {
-    pub trait StrCompat {
-        fn strip_prefix<'a>(&'a self, prefix: &str) -> Option<&'a str>;
-        fn strip_suffix<'a>(&'a self, suffix: &str) -> Option<&'a str>;
-    }
-    impl StrCompat for str {
-        fn strip_prefix<'a>(&'a self, prefix: &str) -> Option<&'a str> {
-            if let Some(s) = self.matches(prefix).next() {
-                Some(&self[s.len()..])
-            } else {
-                None
-            }
-        }
-        fn strip_suffix<'a>(&'a self, suffix: &str) -> Option<&'a str> {
-            if let Some(s) = self.rmatches(suffix).next() {
-                Some(&self[..(self.len() - s.len())])
-            } else {
-                None
-            }
-        }
-    }
-}
-
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(untagged)]
 pub enum Either<Left, Right> {

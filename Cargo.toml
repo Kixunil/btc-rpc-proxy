@@ -21,7 +21,6 @@ spec = "config_spec.toml"
 
 [features]
 default = ["debug_logs", "systemd"]
-old_rust = []
 debug_logs = ["slog/max_level_debug"]
 systemd = ["systemd_socket/enable_systemd"]
 

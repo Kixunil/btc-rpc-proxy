@@ -1,5 +1,3 @@
-#![cfg_attr(feature = "old_rust", allow(unstable_name_collisions))]
-
 #[macro_use]
 extern crate slog;
 

@@ -5,9 +5,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::client::RpcMethod;
 use crate::util::{Either, HexBytes};
 
-#[cfg(feature = "old_rust")]
-use crate::util::old_rust::StrCompat;
-
 #[derive(Debug)]
 pub struct GetBlock;
 #[derive(Debug, Deserialize, Serialize)]

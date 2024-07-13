@@ -16,9 +16,6 @@ use crate::rpc_methods::{
 };
 use crate::state::State;
 
-#[cfg(feature = "old_rust")]
-use crate::util::old_rust::StrCompat;
-
 pub use password::Password;
 
 pub mod input {
