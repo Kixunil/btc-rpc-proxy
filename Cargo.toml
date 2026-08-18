@@ -7,6 +7,7 @@ description = "Finer-grained permission management for bitcoind."
 edition = "2018"
 name = "btc-rpc-proxy"
 version = "0.4.0"
+rust-version = "1.63.0"
 
 [lib]
 name = "btc_rpc_proxy"
