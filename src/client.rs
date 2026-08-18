@@ -87,7 +87,7 @@ impl<'de> Deserialize<'de> for SingleOrBatchRpcRequest {
                 Ok(SingleOrBatchRpcRequest::Single(RpcRequest {
                     id,
                     method: method.ok_or_else(|| serde::de::Error::missing_field("method"))?,
-                    params: params.ok_or_else(|| serde::de::Error::missing_field("params"))?,
+                    params: params.unwrap_or(Vec::new()),
                 }))
             }
         }
